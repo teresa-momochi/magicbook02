@@ -921,8 +921,8 @@
   //   3. 這裡的 BookRepository／render 函式完全不需要改寫，只有資料庫
   //      那一層的授權規則、以及寫入時補上 user_id 這兩件事要處理。
   // ============================================================
-  const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL"; // TODO：換成你的 Supabase 專案網址
-  const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // TODO：換成你的 anon public key
+  const SUPABASE_URL = "https://ssoyvpztoficiacctxze.supabase.co"; // TODO：換成你的 Supabase 專案網址
+  const SUPABASE_ANON_KEY = "sb_publishable_osXnJO3VISd-0rpsKwaFqw_fH0VvNoD"; // TODO：換成你的 anon public key
   const STORAGE_BUCKET = "magicbook02-images";
 
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
