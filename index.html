@@ -1,0 +1,2779 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>教材魔法書 MagicBook</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --card-bg: #ffffff;
+    --ink: #3a3226;
+    --ink-soft: #8a7f6d;
+    --accent: #e8a33d;
+    --accent-soft: #fbe6c4;
+    --accent-deep: #c97f1e;
+    --danger: #c85c4e;
+    --danger-soft: #f6dfda;
+    --border: #ece3d5;
+    --shadow: 0 2px 10px rgba(58, 50, 38, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  /* Page 編輯頁專用：body 固定不捲動，改由左右兩個面板各自捲動 */
+  body.no-scroll {
+    height: 100vh;
+    overflow: hidden;
+  }
+  body.no-scroll #app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 10px 16px;
+  }
+  body.no-scroll .editor-layout {
+    flex: 1;
+    min-height: 0;
+  }
+  body.no-scroll .editor-pane {
+    min-height: 0;
+  }
+  body.no-scroll .editor-pane-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  @media (max-width: 720px) {
+    body.no-scroll {
+      height: auto;
+      overflow: visible;
+    }
+    body.no-scroll #app {
+      height: auto;
+      overflow: visible;
+    }
+    body.no-scroll .editor-pane-body {
+      flex: initial;
+      overflow-y: visible;
+    }
+  }
+
+  .sync-scroll-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .sync-scroll-toggle input { cursor: pointer; }
+
+  #app {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+
+  /* ---------- Home ---------- */
+  .home-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+
+  .home-title-group { display: flex; flex-direction: column; gap: 2px; }
+
+  .home-title {
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .home-subtitle {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  .add-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+    box-shadow: var(--shadow);
+    white-space: nowrap;
+  }
+  .add-btn:hover { background: var(--accent-deep); }
+  .add-btn:active { transform: scale(0.97); }
+
+  .book-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .book-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .book-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(58, 50, 38, 0.1);
+  }
+
+  .book-icon {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .book-info { flex: 1; min-width: 0; }
+
+  .book-name {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .book-meta {
+    font-size: 13px;
+    color: var(--ink-soft);
+    display: flex;
+    gap: 14px;
+  }
+
+  .stat { display: inline-flex; align-items: center; gap: 4px; }
+  .stat-value { font-weight: 600; color: var(--ink); }
+
+  .chevron { color: var(--ink-soft); font-size: 18px; flex-shrink: 0; }
+
+  .empty-hint {
+    text-align: center;
+    color: var(--ink-soft);
+    padding: 60px 0;
+    font-size: 14px;
+  }
+
+  /* ---------- Shared page chrome ---------- */
+  .material-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .back-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .back-btn:hover { background: var(--card-bg); }
+
+  .material-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .material-body {
+    background: var(--card-bg);
+    border: 1px dashed var(--border);
+    border-radius: 16px;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+
+  .book-page-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .book-page-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    gap: 12px;
+  }
+
+  /* ---------- Draggable list items (Lesson / Page) ---------- */
+  .lesson-list, .page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .lesson-card, .page-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: var(--shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  }
+  .lesson-card:hover, .page-card:hover {
+    box-shadow: 0 6px 16px rgba(58, 50, 38, 0.1);
+  }
+  .lesson-card.dragging, .page-card.dragging {
+    opacity: 0.4;
+  }
+  .lesson-card.drop-before, .page-card.drop-before {
+    border-top: 3px solid var(--accent);
+  }
+  .lesson-card.drop-after, .page-card.drop-after {
+    border-bottom: 3px solid var(--accent);
+  }
+
+  .drag-handle {
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 16px;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  .drag-handle:active { cursor: grabbing; }
+
+  .lesson-number, .page-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lesson-main, .page-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .lesson-title, .page-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    background: none;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .icon-btn:hover { background: var(--accent-soft); color: var(--accent-deep); }
+  .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+  /* ---------- Lesson page info card ---------- */
+  .lesson-info-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .lesson-info-number {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-deep);
+    margin: 0 0 6px;
+  }
+  .lesson-info-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 50;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ---------- Page editor: single-row compact header (Workspace First) ---------- */
+  .editor-topbar {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .editor-topbar-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-strong {
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .topbar-sep { color: var(--border); }
+
+  .save-lesson-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Page editor: fixed two-column layout ---------- */
+  #app.wide {
+    max-width: 1100px;
+  }
+
+  .editor-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  @media (max-width: 720px) {
+    .editor-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .editor-pane {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }
+
+  .editor-pane-label {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .editor-pane-label.pane-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .mode-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 狀態徽章：第一順位資訊，直接講「現在是什麼模式」，純顯示、不可點擊 */
+  .mode-status-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+  .mode-status-badge.is-edit {
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+  }
+  .mode-status-badge.is-read {
+    background: var(--border);
+    color: var(--ink);
+  }
+
+  /* 切換按鈕：第二順位資訊，只講「下一步可以做什麼」 */
+  .mode-toggle-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--accent);
+    color: var(--accent-deep);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .mode-toggle-btn:hover { background: var(--accent-soft); }
+
+  /* ---------- Zoom controls (touch/mouse/大電視 friendly, no Ctrl/wheel needed) ---------- */
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .zoom-btn {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--card-bg);
+    color: var(--accent-deep);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    transition: background 0.12s ease;
+  }
+  .zoom-btn:hover:not(:disabled) { background: var(--accent-soft); }
+  .zoom-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    border-color: var(--border);
+    color: var(--ink-soft);
+  }
+
+  .zoom-value {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    min-width: 38px;
+    text-align: center;
+    user-select: none;
+  }
+
+  .editor-pane-label { flex-wrap: wrap; }
+
+  /* ---------- Image lightbox (放大檢視 / 大電視全螢幕展示) ---------- */
+  .image-lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 16, 10, 0.92);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    touch-action: manipulation;
+  }
+
+  .image-lightbox-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+
+  .image-lightbox-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: none;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .image-lightbox-close:hover { background: rgba(255,255,255,0.28); }
+
+  .image-lightbox-hint {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+  }
+
+  /* ---------- Smart Lookup（點字查閱）＋ 選字查閱面板（拖曳選取整句/片語） ----------
+     只在 Text Area 的閱讀模式生效：拖曳選取 → .selection-panel（發音/翻譯/字典/AI解釋，
+     先選功能再看結果）；點一個單字 → .smart-lookup-card（自動發音＋自動翻譯）。
+     兩者共用 .active-query-highlight 反白標記。 */
+  .active-query-highlight {
+    background: #fff1a8;
+    border-radius: 3px;
+    padding: 1px 2px;
+    box-shadow:
+      0 0 0 1px rgba(240, 193, 75, 0.6),
+      0 0 8px 2px rgba(255, 213, 79, 0.45);
+  }
+
+  .selection-panel {
+    position: fixed;
+    background: #1f2430;
+    color: #f4f4f4;
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    gap: 4px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    z-index: 210;
+  }
+  .selection-panel button {
+    background: none;
+    border: none;
+    color: #f4f4f4;
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .selection-panel button:hover { background: rgba(255,255,255,0.15); }
+
+  .result-box {
+    position: fixed;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    z-index: 210;
+    max-width: 280px;
+  }
+  .result-box .rb-label { color: var(--ink-soft); font-size: 11px; margin-bottom: 4px; }
+
+  .smart-lookup-card {
+    position: fixed;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    z-index: 210;
+    max-width: 280px;
+  }
+  .smart-lookup-card .slc-speak-btn {
+    border: none; background: none; cursor: pointer; font-size: 15px; padding: 2px 4px;
+    touch-action: manipulation;
+  }
+  .smart-lookup-card .slc-word { font-weight: 700; font-size: 15px; color: var(--ink); }
+  .smart-lookup-card .slc-cn { margin-top: 6px; color: var(--ink); min-height: 1.2em; }
+  .smart-lookup-card .slc-more-btn {
+    margin-top: 8px; width: 100%; background: none; border: none; color: var(--ink-soft);
+    font-size: 12px; cursor: pointer; padding: 4px 0; text-align: center;
+    touch-action: manipulation;
+  }
+  .smart-lookup-card .slc-more-row {
+    display: none; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .smart-lookup-card .slc-more-row.show { display: flex; }
+  .smart-lookup-card .slc-more-row button {
+    font-size: 12px; border: 1px solid var(--border); background: var(--card-bg);
+    border-radius: 6px; padding: 4px 8px; cursor: pointer; color: var(--ink);
+    touch-action: manipulation;
+  }
+
+  /* ---------- Whiteboard（教學白板）—— Teaching Overlay ----------
+     蓋在 Page Editor（Image Area + Text Area）上方，跟編輯/閱讀模式、縮放、
+     翻頁、Smart Lookup 完全獨立：canvas 預設 pointer-events:none，不攔截
+     任何點擊，只有老師展開工具列（拿起畫筆）時才會攔截點擊變成畫布。
+     內容只存在當次 Page 的畫布像素裡，不保存、不寫入教材資料，離開這一頁
+     或按「清除全部」就會清空。z-index 高於 Smart Lookup 相關 UI（210），
+     讓老師可以直接疊在查閱卡片上方圈選、畫箭頭；FAB／工具列 z-index 最高，
+     永遠可點。 */
+  .whiteboard-canvas {
+    position: fixed;
+    z-index: 220;
+    pointer-events: none;
+    touch-action: none;
+    background: transparent;
+    box-shadow: none;
+    display: none;
+  }
+  .whiteboard-canvas.wb-active { pointer-events: auto; cursor: crosshair; }
+
+  .whiteboard-fab {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 230;
+    display: none;
+  }
+  .whiteboard-fab-btn {
+    width: 52px; height: 52px; border-radius: 50%; border: none;
+    background: var(--accent); color: #fff; font-size: 22px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    touch-action: manipulation;
+  }
+  .whiteboard-fab-btn:hover { background: var(--accent-deep); }
+  .whiteboard-toolbar {
+    position: absolute; bottom: calc(100% + 10px); right: 0;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: none; flex-direction: column; gap: 6px; width: 168px;
+  }
+  .whiteboard-toolbar.show { display: flex; }
+  .wb-row { display: flex; gap: 6px; justify-content: center; }
+  .wb-row button {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card-bg); font-size: 16px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .wb-color.active, .wb-size.active, #wbEraserBtn.active {
+    border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.3);
+  }
+  .wb-divider { border-top: 1px solid var(--border); margin: 2px 2px; }
+  .wb-tool, .wb-action {
+    width: 100%; text-align: left; border: 1px solid var(--border); background: var(--card-bg);
+    border-radius: 8px; padding: 6px 8px; font-size: 13px; cursor: pointer; color: var(--ink);
+    touch-action: manipulation;
+  }
+  .wb-tool:hover, .wb-action:hover { background: var(--accent-soft); }
+  #wbEraserBtn.active { background: var(--accent-soft); }
+
+  .editor-pane-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  /* ---------- Reading Mode (rendered HTML, not editable) ---------- */
+  .reading-view {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .reading-block p {
+    margin: 0 0 12px;
+    font-size: calc(15px * var(--text-zoom-scale, 1));
+    line-height: 1.9;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .reading-block p:last-child { margin-bottom: 0; }
+  .reading-block p::selection { background: #fff1a8; }
+
+  /* ---------- Block list (used inside each column) ---------- */
+  .block-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .block-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    box-shadow: var(--shadow);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  }
+  .block-card:hover { box-shadow: 0 6px 16px rgba(58, 50, 38, 0.1); }
+  .block-card.dragging { opacity: 0.4; }
+  .block-card.drop-before { border-top: 3px solid var(--accent); }
+  .block-card.drop-after { border-bottom: 3px solid var(--accent); }
+
+  .block-card .drag-handle { margin-top: 4px; }
+
+  .block-index {
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--accent-deep);
+    font-weight: 700;
+    margin-top: 3px;
+  }
+
+  .block-main { flex: 1; min-width: 0; }
+
+  .block-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    outline: none;
+    background: #fff;
+    border-radius: 8px;
+    resize: vertical;
+    min-height: 70px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: calc(14px * var(--text-zoom-scale, 1));
+    line-height: 1.7;
+    color: var(--ink);
+    cursor: text;
+  }
+  .block-textarea::placeholder { color: var(--ink-soft); }
+  .block-textarea:hover { border-color: #d8cdb8; }
+  .block-textarea:focus {
+    border-color: var(--accent);
+    background: #fff;
+  }
+
+  /* ---------- Image slot (Module 08: Image Upload) ---------- */
+  .image-slot.is-empty {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink-soft);
+    font-size: 13px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .image-slot.is-empty:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .image-slot.is-empty.drag-over {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .image-slot.has-image {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .image-slot.has-image.drag-over {
+    outline: 2px solid var(--accent);
+  }
+
+  .image-slot-img {
+    display: block;
+    width: 100%;
+    max-height: calc(320px * var(--img-zoom-scale, 1));
+    object-fit: contain;
+    background: var(--bg);
+    cursor: zoom-in;
+    transition: max-height 0.15s ease;
+  }
+
+  .image-slot-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 5px 6px;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+  }
+
+  .image-slot-btn {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 4px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background 0.12s ease;
+    touch-action: manipulation;
+  }
+  .image-slot-btn:hover { background: var(--accent-soft); }
+
+  .card-actions.top-align { margin-top: 2px; }
+
+  .add-btn.secondary {
+    background: var(--card-bg);
+    color: var(--accent-deep);
+    border: 1px solid var(--accent);
+    width: 100%;
+    text-align: center;
+  }
+  .add-btn.secondary:hover { background: var(--accent-soft); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+  // ============================================================
+  // Supabase Client（第一階段：單一使用者模式，尚未接 Auth）
+  //
+  // 之後要加登入時：
+  //   1. 幫每個資料表補上 user_id 實際值（欄位已預留，目前是 nullable）
+  //   2. 把 schema.sql 裡的 RLS Policy 從「true（全部允許）」改成
+  //      「auth.uid() = user_id」
+  //   3. 這裡的 BookRepository／render 函式完全不需要改寫，只有資料庫
+  //      那一層的授權規則、以及寫入時補上 user_id 這兩件事要處理。
+  // ============================================================
+  const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL"; // TODO：換成你的 Supabase 專案網址
+  const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // TODO：換成你的 anon public key
+  const STORAGE_BUCKET = "magicbook02-images";
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // 產生本地暫時 id：Page／Block 在按下 💾 儲存 Lesson 之前都只存在瀏覽器
+  // 記憶體裡，還沒有 Supabase 的正式 id，畫面（drag reorder、事件綁定）
+  // 需要一個穩定的 key 可以用。儲存時完全不會把這個暫時 id 寫進資料庫——
+  // 正式 id 一律由 Supabase 的 gen_random_uuid() 產生。
+  let localIdSeq = 1;
+  function nextLocalId(prefix) {
+    return `local-${prefix}-${Date.now().toString(36)}-${localIdSeq++}`;
+  }
+
+  const app = document.getElementById("app");
+  const toastEl = document.getElementById("toast");
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ---------- Raw Text → HTML Renderer (v1：忠實呈現，rawText 為唯一資料來源) ----------
+  // 最高原則：rawText 是 Single Source of Truth，html 只是 Rendering。
+  // 轉換規則（第一版，不做任何語意判斷 / 自動排版）：
+  //   - 用單一 "\n" 切割，逐行處理，絕不用 /\n+/ 這種會把連續空行吃掉的切法，
+  //     否則會改變使用者原始的換行次數（等於偷偷合併/刪除空行）。
+  //   - 有實質內容的行 → 原封不動（不 trim、不修正大小寫/標點/縮排）包進 <p>...</p>。
+  //   - 純空白行（含只有空白字元的行）→ 原樣保留，不包 <p>，也不刪除，
+  //     這樣空行的「數量」與「位置」都跟 rawText 一致，不會被合併或消失。
+  //   - 不合併段落、不拆分段落、不增減空白、不修正文法標點大小寫、
+  //     不自動判斷 <h1>/<h2>/表格/清單。忠實呈現優先於美觀。
+  // 這是 rawText -> html 唯一的轉換點；未來若要換更聰明的排版邏輯，
+  // 只需要改這個函式，不用動 Editor 或 Reading Mode 的其他程式碼。
+  function rawTextToHtml(rawText) {
+    if (!rawText) return "";
+    return rawText
+      .split("\n")
+      .map(line => (line.trim().length === 0 ? line : `<p>${escapeHtml(line)}</p>`))
+      .join("\n");
+  }
+
+  function renumber(list) {
+    list.forEach((item, idx) => { item.number = idx + 1; });
+  }
+
+  // ============================================================
+  // BookRepository — 唯一允許跟 Supabase 打交道的邊界。
+  //
+  // 分兩種資料流：
+  //   Book／Lesson 中繼資料（名稱、標題、順序、存在與否）
+  //     → 每次操作立即寫回 Supabase（單筆小更新，跟以前點下去就生效的
+  //       UX 一致，不需要額外的「儲存」動作）。
+  //   Lesson 的 Page／Image Block／Text Block（含 rawText／html／圖片網址）
+  //     → 開啟 Lesson 時整批載入成一份 Working Copy（loadLessonWorkingCopy），
+  //       畫面上的新增/刪除/排序/打字全部只改這份記憶體裡的 Working Copy，
+  //       直到按下 💾「儲存 Lesson」才呼叫 saveLessonWorkingCopy() 整批寫回
+  //       —— 這是唯一真正寫入 Supabase 的時機，鍵盤輸入不會逐字觸發網路請求。
+  //
+  // 之後要加 Auth，只需要改這個類別內部查詢的過濾條件（補上 user_id），
+  // 呼叫端（render 函式）完全不用動。
+  // ============================================================
+  class BookRepository {
+    // ---- Book ----
+    async listBooksSummary() {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_book_summary")
+        .select("*")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map(b => ({
+        id: b.id,
+        name: b.name,
+        lessonCount: b.lesson_count || 0,
+        pageCount: b.page_count || 0,
+      }));
+    }
+
+    async createBook(name) {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_books")
+        .insert({ name })
+        .select()
+        .single();
+      if (error) throw error;
+      return { id: data.id, name: data.name };
+    }
+
+    async renameBook(bookId, name) {
+      const { error } = await supabaseClient
+        .from("magicbook02_books")
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq("id", bookId);
+      if (error) throw error;
+    }
+
+    async getBookById(bookId) {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_books")
+        .select("id, name")
+        .eq("id", bookId)
+        .single();
+      if (error) throw error;
+      return { id: data.id, name: data.name };
+    }
+
+    // ---- Lesson 中繼資料（立即寫回，不走 Working Copy）----
+    async listLessonsSummary(bookId) {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_lesson_summary")
+        .select("*")
+        .eq("book_id", bookId)
+        .order("number", { ascending: true });
+      if (error) throw error;
+      return (data || []).map(l => ({
+        id: l.id,
+        number: l.number,
+        title: l.title,
+        pageCount: l.page_count || 0,
+      }));
+    }
+
+    async createLesson(bookId, title) {
+      const { data: existing, error: countError } = await supabaseClient
+        .from("magicbook02_lessons")
+        .select("number")
+        .eq("book_id", bookId)
+        .order("number", { ascending: false })
+        .limit(1);
+      if (countError) throw countError;
+      const nextNumber = existing && existing.length > 0 ? existing[0].number + 1 : 1;
+
+      const { data, error } = await supabaseClient
+        .from("magicbook02_lessons")
+        .insert({ book_id: bookId, number: nextNumber, title })
+        .select()
+        .single();
+      if (error) throw error;
+      await this._touchBook(bookId);
+      return { id: data.id, number: data.number, title: data.title, pageCount: 0 };
+    }
+
+    async renameLesson(lessonId, title) {
+      const { error } = await supabaseClient
+        .from("magicbook02_lessons")
+        .update({ title, updated_at: new Date().toISOString() })
+        .eq("id", lessonId);
+      if (error) throw error;
+    }
+
+    async deleteLesson(bookId, lessonId) {
+      const { error } = await supabaseClient
+        .from("magicbook02_lessons")
+        .delete()
+        .eq("id", lessonId);
+      if (error) throw error;
+      await this._renumberLessons(bookId);
+    }
+
+    // Lesson 順序調整（拖曳排序／刪除後補齊編號）：先用暫時負數編號避開
+    // unique(book_id, number) 衝突，分兩輪寫入才是安全的作法。
+    async reorderLessons(bookId, orderedLessonIds) {
+      for (let i = 0; i < orderedLessonIds.length; i++) {
+        const { error } = await supabaseClient
+          .from("magicbook02_lessons")
+          .update({ number: -(i + 1) })
+          .eq("id", orderedLessonIds[i]);
+        if (error) throw error;
+      }
+      for (let i = 0; i < orderedLessonIds.length; i++) {
+        const { error } = await supabaseClient
+          .from("magicbook02_lessons")
+          .update({ number: i + 1 })
+          .eq("id", orderedLessonIds[i]);
+        if (error) throw error;
+      }
+      await this._touchBook(bookId);
+    }
+
+    async _renumberLessons(bookId) {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_lessons")
+        .select("id")
+        .eq("book_id", bookId)
+        .order("number", { ascending: true });
+      if (error) throw error;
+      const ids = (data || []).map(r => r.id);
+      if (ids.length > 0) await this.reorderLessons(bookId, ids);
+    }
+
+    async _touchBook(bookId) {
+      const { error } = await supabaseClient
+        .from("magicbook02_books")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", bookId);
+      if (error) throw error;
+    }
+
+    // ---- Lesson Working Copy（Page + Image/Text Block，含 rawText／html）----
+    // 唯一走「開啟時整批載入、按 💾 才整批寫回」流程的資料。
+    async getLessonIdByNumber(bookId, lessonNumber) {
+      const { data, error } = await supabaseClient
+        .from("magicbook02_lessons")
+        .select("id")
+        .eq("book_id", bookId)
+        .eq("number", lessonNumber)
+        .single();
+      if (error) throw error;
+      return data.id;
+    }
+
+    async loadLessonWorkingCopy(bookId, lessonId) {
+      const { data: lessonRow, error: lessonError } = await supabaseClient
+        .from("magicbook02_lessons")
+        .select("id, number, title")
+        .eq("id", lessonId)
+        .single();
+      if (lessonError) throw lessonError;
+
+      const { data: pageRows, error: pagesError } = await supabaseClient
+        .from("magicbook02_pages")
+        .select("id, number")
+        .eq("lesson_id", lessonId)
+        .order("number", { ascending: true });
+      if (pagesError) throw pagesError;
+
+      const pageIds = (pageRows || []).map(p => p.id);
+
+      let imageBlockRows = [];
+      let textBlockRows = [];
+      if (pageIds.length > 0) {
+        const { data: imgData, error: imgError } = await supabaseClient
+          .from("magicbook02_image_blocks")
+          .select("id, page_id, position, content, image_url, file_name")
+          .in("page_id", pageIds)
+          .order("position", { ascending: true });
+        if (imgError) throw imgError;
+        imageBlockRows = imgData || [];
+
+        const { data: txtData, error: txtError } = await supabaseClient
+          .from("magicbook02_text_blocks")
+          .select("id, page_id, position, raw_text, html")
+          .in("page_id", pageIds)
+          .order("position", { ascending: true });
+        if (txtError) throw txtError;
+        textBlockRows = txtData || [];
+      }
+
+      const pages = (pageRows || []).map(p => ({
+        id: p.id,
+        number: p.number,
+        imageBlocks: imageBlockRows
+          .filter(b => b.page_id === p.id)
+          .map(b => ({ id: b.id, content: b.content || "點擊或拖曳圖片到這裡", imageSrc: b.image_url || null, fileName: b.file_name || null })),
+        textBlocks: textBlockRows
+          .filter(b => b.page_id === p.id)
+          .map(b => ({ id: b.id, rawText: b.raw_text || "", html: b.html || "" })),
+      }));
+
+      return { bookId, id: lessonRow.id, number: lessonRow.number, title: lessonRow.title, pages };
+    }
+
+    // 整批寫回：刪掉這個 Lesson 底下所有 Page（cascade 一併刪掉 Image/Text
+    // Block），再依 Working Copy 目前的內容／順序整批重新寫入。單一使用者、
+    // 沒有並行編輯疑慮，整批覆蓋比逐筆 diff 簡單、不容易出錯。圖片本身
+    // 已經在選取當下就上傳到 Storage 了，這裡只搬運網址字串，不重新上傳。
+    async saveLessonWorkingCopy(lessonWorkingCopy) {
+      const lessonId = lessonWorkingCopy.id;
+
+      const { error: deleteError } = await supabaseClient
+        .from("magicbook02_pages")
+        .delete()
+        .eq("lesson_id", lessonId);
+      if (deleteError) throw deleteError;
+
+      if (lessonWorkingCopy.pages.length > 0) {
+        const pagesPayload = lessonWorkingCopy.pages.map(p => ({ lesson_id: lessonId, number: p.number }));
+        const { data: insertedPages, error: insertPagesError } = await supabaseClient
+          .from("magicbook02_pages")
+          .insert(pagesPayload)
+          .select("id, number");
+        if (insertPagesError) throw insertPagesError;
+
+        const pageIdByNumber = new Map(insertedPages.map(p => [p.number, p.id]));
+
+        const imageBlocksPayload = [];
+        const textBlocksPayload = [];
+        lessonWorkingCopy.pages.forEach(page => {
+          const pageId = pageIdByNumber.get(page.number);
+          (page.imageBlocks || []).forEach((block, idx) => {
+            imageBlocksPayload.push({
+              page_id: pageId,
+              position: idx,
+              content: block.content || null,
+              image_url: block.imageSrc || null,
+              file_name: block.fileName || null,
+            });
+          });
+          (page.textBlocks || []).forEach((block, idx) => {
+            textBlocksPayload.push({
+              page_id: pageId,
+              position: idx,
+              raw_text: block.rawText || "",
+              html: block.html || "",
+            });
+          });
+        });
+
+        if (imageBlocksPayload.length > 0) {
+          const { error } = await supabaseClient.from("magicbook02_image_blocks").insert(imageBlocksPayload);
+          if (error) throw error;
+        }
+        if (textBlocksPayload.length > 0) {
+          const { error } = await supabaseClient.from("magicbook02_text_blocks").insert(textBlocksPayload);
+          if (error) throw error;
+        }
+      }
+
+      await supabaseClient
+        .from("magicbook02_lessons")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", lessonId);
+      await this._touchBook(lessonWorkingCopy.bookId);
+    }
+
+    // ---- 圖片：選取當下立即上傳到 Supabase Storage，Working Copy／
+    // 資料庫從頭到尾只保存公開網址，不保存 base64 ----
+    async uploadImage(file) {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabaseClient.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+      if (error) throw error;
+      const { data } = supabaseClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      return data.publicUrl;
+    }
+  }
+
+  const bookRepository = new BookRepository();
+
+  // state 只放「目前畫面正在操作的東西」：currentLesson 就是目前開啟
+  // 那個 Lesson 的 Working Copy（見上方 BookRepository 說明）。
+  const state = {
+    currentLesson: null,
+  };
+
+  // 確保 state.currentLesson 對應的就是目前路由要求的這個 Lesson；
+  // 不是的話（第一次進入、或重新整理頁面、或切去別的 Lesson）才重新
+  // 向 Supabase 要一份全新的 Working Copy。
+  async function ensureLessonWorkingCopyLoaded(bookId, lessonNumber) {
+    if (state.currentLesson && state.currentLesson.bookId === bookId && state.currentLesson.number === lessonNumber) {
+      return state.currentLesson;
+    }
+    const lessonId = await bookRepository.getLessonIdByNumber(bookId, lessonNumber);
+    const workingCopy = await bookRepository.loadLessonWorkingCopy(bookId, lessonId);
+    state.currentLesson = workingCopy;
+    return workingCopy;
+  }
+
+  // 💾「儲存 Lesson」按鈕的唯一進入點：把目前的 Working Copy 整批寫回
+  // Supabase。這是整個 App 裡，Page／Block 的內容真正落地到雲端的時刻。
+  async function persistCurrentLesson() {
+    if (!state.currentLesson) return;
+    try {
+      await bookRepository.saveLessonWorkingCopy(state.currentLesson);
+      showToast("已儲存 Lesson，圖片與文字都保留了");
+    } catch (err) {
+      console.error("儲存 Lesson 失敗：", err);
+      showToast("儲存失敗，請檢查網路連線後再試一次");
+    }
+  }
+
+  // ---------- Simple hash router ----------
+  function parseRoute() {
+    const hash = location.hash.replace(/^#\/?/, "");
+    if (!hash || hash === "home") return { view: "home" };
+
+    let m = hash.match(/^material\/([^/]+)\/lesson\/([^/]+)\/page\/([^/]+)$/);
+    if (m) {
+      return {
+        view: "page",
+        bookId: decodeURIComponent(m[1]),
+        lessonNumber: Number(decodeURIComponent(m[2])),
+        pageNumber: Number(decodeURIComponent(m[3])),
+      };
+    }
+
+    m = hash.match(/^material\/([^/]+)\/lesson\/([^/]+)$/);
+    if (m) {
+      return {
+        view: "lesson",
+        bookId: decodeURIComponent(m[1]),
+        lessonNumber: Number(decodeURIComponent(m[2])),
+      };
+    }
+
+    m = hash.match(/^material\/([^/]+)$/);
+    if (m) return { view: "material", id: decodeURIComponent(m[1]) };
+
+    return { view: "home" };
+  }
+
+  function navigate(hash) {
+    location.hash = hash;
+  }
+
+  async function render() {
+    closeQueryPanels();
+    closeSmartLookupCard();
+    const route = parseRoute();
+    app.classList.toggle("wide", route.view === "page");
+    document.body.classList.toggle("no-scroll", route.view === "page");
+    if (route.view === "page") {
+      await renderPageEditor(route.bookId, route.lessonNumber, route.pageNumber);
+    } else {
+      hideWhiteboardUI();
+      if (route.view === "lesson") {
+        await renderLessonPage(route.bookId, route.lessonNumber);
+      } else if (route.view === "material") {
+        await renderMaterialPage(route.id);
+      } else {
+        await renderHome();
+      }
+    }
+  }
+
+  // ---------- Home view ----------
+  async function renderHome() {
+    app.innerHTML = `
+      <div class="home-header">
+        <div class="home-title-group">
+          <h1 class="home-title">📚 我的魔法書</h1>
+          <p class="home-subtitle">Interactive Teaching Editor・互動教材編輯器</p>
+        </div>
+        <button class="add-btn" id="addBtn">＋新增教材</button>
+      </div>
+      <div class="book-list" id="bookList"><div class="empty-hint">載入中...</div></div>
+    `;
+
+    document.getElementById("addBtn").addEventListener("click", async () => {
+      const name = (prompt("請輸入教材名稱：", "") || "").trim();
+      if (!name) return;
+      try {
+        await bookRepository.createBook(name);
+        showToast("已新增教材");
+        await renderHome();
+      } catch (err) {
+        console.error("新增教材失敗：", err);
+        showToast("新增教材失敗，請檢查網路連線後再試一次");
+      }
+    });
+
+    const listEl = document.getElementById("bookList");
+    let books;
+    try {
+      books = await bookRepository.listBooksSummary();
+    } catch (err) {
+      console.error("載入教材列表失敗：", err);
+      listEl.innerHTML = `<div class="empty-hint">載入教材列表失敗，請檢查網路連線或重新整理頁面</div>`;
+      return;
+    }
+
+    if (books.length === 0) {
+      listEl.innerHTML = `<div class="empty-hint">還沒有教材，點擊「＋新增教材」開始建立第一本魔法書吧！</div>`;
+    } else {
+      listEl.innerHTML = books.map(book => `
+        <div class="book-card" data-id="${book.id}">
+          <div class="book-icon">📖</div>
+          <div class="book-info">
+            <p class="book-name">${escapeHtml(book.name)}</p>
+            <div class="book-meta">
+              <span class="stat">Lessons：<span class="stat-value">${book.lessonCount}</span></span>
+              <span class="stat">Pages：<span class="stat-value">${book.pageCount}</span></span>
+            </div>
+          </div>
+          <button class="icon-btn" data-action="edit-book" title="編輯 Book Name">✎</button>
+          <div class="chevron">›</div>
+        </div>
+      `).join("");
+    }
+
+    listEl.querySelectorAll('[data-action="edit-book"]').forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".book-card");
+        const book = books.find(b => b.id === card.dataset.id);
+        if (!book) return;
+        const newName = prompt("編輯 Book Name：", book.name);
+        if (newName === null) return;
+        const trimmed = newName.trim();
+        if (!trimmed) return;
+        try {
+          await bookRepository.renameBook(book.id, trimmed);
+          showToast("已更新 Book Name");
+          await renderHome();
+        } catch (err) {
+          console.error("更新 Book Name 失敗：", err);
+          showToast("更新失敗，請檢查網路連線後再試一次");
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".book-card").forEach(card => {
+      card.addEventListener("click", () => {
+        navigate(`material/${encodeURIComponent(card.dataset.id)}`);
+      });
+    });
+  }
+
+  // ---------- Book view (Lesson list with management) ----------
+  async function renderMaterialPage(bookId) {
+    app.innerHTML = `
+      <div class="book-page-top">
+        <button class="back-btn" id="backBtn">← 返回我的魔法書</button>
+      </div>
+      <div class="book-page-actions">
+        <h2 class="material-title" id="materialTitle">載入中...</h2>
+        <button class="add-btn" id="addLessonBtn">＋新增 Lesson</button>
+      </div>
+      <div class="lesson-list" id="lessonList"><div class="empty-hint">載入中...</div></div>
+    `;
+
+    document.getElementById("backBtn").addEventListener("click", () => navigate("home"));
+
+    let book, lessons;
+    try {
+      [book, lessons] = await Promise.all([
+        bookRepository.getBookById(bookId),
+        bookRepository.listLessonsSummary(bookId),
+      ]);
+    } catch (err) {
+      console.error("載入教材失敗：", err);
+      document.getElementById("lessonList").innerHTML = `<div class="empty-hint">載入失敗，請重新整理頁面再試一次</div>`;
+      return;
+    }
+
+    document.getElementById("materialTitle").textContent = book.name;
+
+    const bookState = { id: bookId, name: book.name, lessons };
+
+    document.getElementById("addLessonBtn").addEventListener("click", async () => {
+      const title = (prompt("請輸入 Lesson Title：", "") || "").trim();
+      try {
+        const created = await bookRepository.createLesson(bookId, title || "未命名 Lesson");
+        bookState.lessons.push(created);
+        showToast("已新增 Lesson");
+        renderLessonList(bookState);
+      } catch (err) {
+        console.error("新增 Lesson 失敗：", err);
+        showToast("新增 Lesson 失敗，請檢查網路連線後再試一次");
+      }
+    });
+
+    renderLessonList(bookState);
+  }
+
+  function renderLessonList(book) {
+    const listEl = document.getElementById("lessonList");
+
+    if (book.lessons.length === 0) {
+      listEl.innerHTML = `<div class="empty-hint">還沒有 Lesson，點擊「＋新增 Lesson」開始建立吧！</div>`;
+      return;
+    }
+
+    listEl.innerHTML = book.lessons.map(lesson => `
+      <div class="lesson-card" draggable="true" data-id="${lesson.id}">
+        <div class="drag-handle" title="拖曳排序">⠿</div>
+        <div class="lesson-number">L${lesson.number}</div>
+        <div class="lesson-main" data-nav="1">
+          <div class="lesson-title">${escapeHtml(lesson.title)}</div>
+        </div>
+        <div class="card-actions">
+          <button class="icon-btn" data-action="edit" title="編輯 Lesson Title">✎</button>
+          <button class="icon-btn danger" data-action="delete" title="刪除 Lesson">🗑</button>
+        </div>
+      </div>
+    `).join("");
+
+    // click to navigate
+    listEl.querySelectorAll(".lesson-main").forEach(main => {
+      main.addEventListener("click", () => {
+        const card = main.closest(".lesson-card");
+        const lesson = book.lessons.find(l => l.id === card.dataset.id);
+        navigate(`material/${encodeURIComponent(book.id)}/lesson/${encodeURIComponent(lesson.number)}`);
+      });
+    });
+
+    // edit title
+    listEl.querySelectorAll('[data-action="edit"]').forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".lesson-card");
+        const lesson = book.lessons.find(l => l.id === card.dataset.id);
+        const newTitle = prompt("編輯 Lesson Title：", lesson.title);
+        if (newTitle === null) return;
+        const trimmed = newTitle.trim();
+        if (!trimmed) return;
+        try {
+          await bookRepository.renameLesson(lesson.id, trimmed);
+          lesson.title = trimmed;
+          showToast("已更新 Lesson Title");
+          renderLessonList(book);
+        } catch (err) {
+          console.error("更新 Lesson Title 失敗：", err);
+          showToast("更新失敗，請檢查網路連線後再試一次");
+        }
+      });
+    });
+
+    // delete
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".lesson-card");
+        const lesson = book.lessons.find(l => l.id === card.dataset.id);
+        if (!confirm(`確定要刪除「Lesson ${lesson.number}　${lesson.title}」嗎？`)) return;
+        try {
+          await bookRepository.deleteLesson(book.id, lesson.id);
+          book.lessons = book.lessons.filter(l => l.id !== lesson.id);
+          renumber(book.lessons);
+          showToast("已刪除 Lesson");
+          renderLessonList(book);
+        } catch (err) {
+          console.error("刪除 Lesson 失敗：", err);
+          showToast("刪除失敗，請檢查網路連線後再試一次");
+        }
+      });
+    });
+
+    enableDragReorder(listEl, ".lesson-card", async (fromId, toId) => {
+      reorderById(book.lessons, fromId, toId);
+      renumber(book.lessons);
+      renderLessonList(book);
+      try {
+        await bookRepository.reorderLessons(book.id, book.lessons.map(l => l.id));
+      } catch (err) {
+        console.error("同步 Lesson 順序失敗：", err);
+        showToast("排序未能同步到雲端，請重新整理頁面後再試一次");
+      }
+    });
+  }
+
+  // ---------- Lesson view (Lesson info + Page list with management) ----------
+  async function renderLessonPage(bookId, lessonNumber) {
+    app.innerHTML = `
+      <div class="book-page-top">
+        <button class="back-btn" id="backBtn">← 返回教材</button>
+        <button class="add-btn" id="saveLessonBtn">💾 儲存 Lesson</button>
+      </div>
+      <div class="lesson-info-card" id="lessonInfoCard">
+        <p class="lesson-info-number">載入中...</p>
+      </div>
+      <div class="book-page-actions">
+        <h2 class="material-title">Page 清單</h2>
+        <button class="add-btn" id="addPageBtn">＋新增 Page</button>
+      </div>
+      <div class="page-list" id="pageList"><div class="empty-hint">載入中...</div></div>
+    `;
+
+    document.getElementById("backBtn").addEventListener("click", () => {
+      navigate(`material/${encodeURIComponent(bookId)}`);
+    });
+
+    let book, lesson;
+    try {
+      [book, lesson] = await Promise.all([
+        bookRepository.getBookById(bookId),
+        ensureLessonWorkingCopyLoaded(bookId, lessonNumber),
+      ]);
+    } catch (err) {
+      console.error("載入 Lesson 失敗：", err);
+      document.getElementById("pageList").innerHTML = `<div class="empty-hint">載入失敗，請重新整理頁面再試一次</div>`;
+      return;
+    }
+
+    document.getElementById("backBtn").textContent = `← 返回 ${book.name}`;
+    document.getElementById("lessonInfoCard").innerHTML = `
+      <p class="lesson-info-number">Lesson ${lesson.number}</p>
+      <p class="lesson-info-title">${escapeHtml(lesson.title)}</p>
+    `;
+
+    document.getElementById("saveLessonBtn").addEventListener("click", async () => {
+      await persistCurrentLesson();
+    });
+
+    document.getElementById("addPageBtn").addEventListener("click", () => {
+      lesson.pages.push({
+        id: nextLocalId("page"),
+        number: lesson.pages.length + 1,
+        imageBlocks: [{ id: nextLocalId("block"), content: "點擊或拖曳圖片到這裡", imageSrc: null, fileName: null }],
+        textBlocks: [{ id: nextLocalId("block"), rawText: "", html: "" }],
+      });
+      showToast("已新增 Page（記得按 💾 儲存 Lesson 才會存進雲端）");
+      renderPageList(bookId, lesson);
+    });
+
+    renderPageList(bookId, lesson);
+  }
+
+  function renderPageList(bookId, lesson) {
+    const listEl = document.getElementById("pageList");
+
+    if (lesson.pages.length === 0) {
+      listEl.innerHTML = `<div class="empty-hint">還沒有 Page，點擊「＋新增 Page」開始建立吧！</div>`;
+      return;
+    }
+
+    listEl.innerHTML = lesson.pages.map(page => `
+      <div class="page-card" draggable="true" data-id="${page.id}">
+        <div class="drag-handle" title="拖曳排序">⠿</div>
+        <div class="page-icon">📄</div>
+        <div class="page-main" data-nav="1">
+          <div class="page-title">Page ${page.number}</div>
+        </div>
+        <div class="card-actions">
+          <button class="icon-btn danger" data-action="delete" title="刪除 Page">🗑</button>
+        </div>
+      </div>
+    `).join("");
+
+    listEl.querySelectorAll(".page-main").forEach(main => {
+      main.addEventListener("click", () => {
+        const card = main.closest(".page-card");
+        const page = lesson.pages.find(p => p.id === card.dataset.id);
+        navigate(`material/${encodeURIComponent(bookId)}/lesson/${encodeURIComponent(lesson.number)}/page/${encodeURIComponent(page.number)}`);
+      });
+    });
+
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".page-card");
+        const page = lesson.pages.find(p => p.id === card.dataset.id);
+        if (!confirm(`確定要刪除「Page ${page.number}」嗎？`)) return;
+        lesson.pages = lesson.pages.filter(p => p.id !== page.id);
+        renumber(lesson.pages);
+        showToast("已刪除 Page（記得按 💾 儲存 Lesson 才會存進雲端）");
+        renderPageList(bookId, lesson);
+      });
+    });
+
+    enableDragReorder(listEl, ".page-card", (fromId, toId) => {
+      reorderById(lesson.pages, fromId, toId);
+      renumber(lesson.pages);
+      renderPageList(bookId, lesson);
+    });
+  }
+
+  // ---------- Zoom (touch/mouse/大電視 friendly — no Ctrl / mouse-wheel needed) ----------
+  const ZOOM_STEPS = [100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+  let imageZoomLevel = 100;
+  let textZoomLevel = 100;
+
+  function nextZoomUp(level) {
+    const idx = ZOOM_STEPS.indexOf(level);
+    if (idx === -1 || idx === ZOOM_STEPS.length - 1) return ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    return ZOOM_STEPS[idx + 1];
+  }
+  function nextZoomDown(level) {
+    const idx = ZOOM_STEPS.indexOf(level);
+    if (idx <= 0) return ZOOM_STEPS[0];
+    return ZOOM_STEPS[idx - 1];
+  }
+
+  function renderZoomControls(idPrefix, level, label) {
+    return `
+      <div class="zoom-controls" role="group" aria-label="${label}縮放">
+        <button type="button" class="zoom-btn" id="${idPrefix}ZoomOut" aria-label="縮小">−</button>
+        <span class="zoom-value" id="${idPrefix}ZoomValue">${level}%</span>
+        <button type="button" class="zoom-btn" id="${idPrefix}ZoomIn" aria-label="放大">＋</button>
+      </div>
+    `;
+  }
+
+  function applyImageZoom() {
+    const body = document.getElementById("imagePaneBody");
+    const valueEl = document.getElementById("imageZoomValue");
+    const outBtn = document.getElementById("imageZoomOut");
+    const inBtn = document.getElementById("imageZoomIn");
+    if (body) body.style.setProperty("--img-zoom-scale", imageZoomLevel / 100);
+    if (valueEl) valueEl.textContent = `${imageZoomLevel}%`;
+    if (outBtn) outBtn.disabled = imageZoomLevel <= ZOOM_STEPS[0];
+    if (inBtn) inBtn.disabled = imageZoomLevel >= ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  }
+
+  function applyTextZoom() {
+    const body = document.getElementById("textPaneBody");
+    const valueEl = document.getElementById("textZoomValue");
+    const outBtn = document.getElementById("textZoomOut");
+    const inBtn = document.getElementById("textZoomIn");
+    if (body) body.style.setProperty("--text-zoom-scale", textZoomLevel / 100);
+    if (valueEl) valueEl.textContent = `${textZoomLevel}%`;
+    if (outBtn) outBtn.disabled = textZoomLevel <= ZOOM_STEPS[0];
+    if (inBtn) inBtn.disabled = textZoomLevel >= ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  }
+
+  function wireImageZoomButtons() {
+    document.getElementById("imageZoomOut").addEventListener("click", () => {
+      imageZoomLevel = nextZoomDown(imageZoomLevel);
+      applyImageZoom();
+    });
+    document.getElementById("imageZoomIn").addEventListener("click", () => {
+      imageZoomLevel = nextZoomUp(imageZoomLevel);
+      applyImageZoom();
+    });
+  }
+
+  function wireTextZoomButtons() {
+    document.getElementById("textZoomOut").addEventListener("click", () => {
+      textZoomLevel = nextZoomDown(textZoomLevel);
+      applyTextZoom();
+    });
+    document.getElementById("textZoomIn").addEventListener("click", () => {
+      textZoomLevel = nextZoomUp(textZoomLevel);
+      applyTextZoom();
+    });
+  }
+
+  // ---------- Smart Lookup（點字查閱）＋ 選字查閱面板（拖曳選取整句/片語） ----------
+  // 只在 Text Area 的「閱讀模式」啟用，仿照 MagicBook01 SMART_LOOKUP_SPEC 的
+  // 兩條互動路徑：
+  //   拖曳選取一段文字（片語/句子）→ .selection-panel（發音/翻譯/字典/AI解釋，
+  //     先選功能再看結果）
+  //   直接點一個單字（沒有拖曳）→ .smart-lookup-card（自動發音＋自動翻譯，
+  //     「更多」裡只有 📚 劍橋字典／🤖 AI 解釋）
+  // 兩者互斥、共用同一套反白標記／面板定位／關閉機制。
+  let activeSelectionPanel = null;
+  let activeResultBox = null;
+  let activeHighlightMark = null;
+  let smartLookupCardEl = null;
+  let smartLookupRequestToken = 0; // 每次查詢遞增，讓過期的非同步翻譯結果不再覆蓋畫面
+
+  function closeQueryPanels() {
+    if (activeSelectionPanel) { activeSelectionPanel.remove(); activeSelectionPanel = null; }
+    if (activeResultBox) { activeResultBox.remove(); activeResultBox = null; }
+    clearQueryHighlight();
+  }
+
+  // 在選取/點擊的範圍上包一層 <mark>，產生持續、明確的反白，直到面板關閉。
+  function applyQueryHighlight(range) {
+    clearQueryHighlight();
+    const mark = document.createElement("mark");
+    mark.className = "active-query-highlight";
+    try {
+      range.surroundContents(mark);
+      activeHighlightMark = mark;
+    } catch (err) {
+      // 範圍跨越多個元素邊界時可能失敗，不強求反白，不影響查閱功能本身
+    }
+  }
+
+  function clearQueryHighlight() {
+    if (activeHighlightMark && activeHighlightMark.parentNode) {
+      const parent = activeHighlightMark.parentNode;
+      while (activeHighlightMark.firstChild) {
+        parent.insertBefore(activeHighlightMark.firstChild, activeHighlightMark);
+      }
+      parent.removeChild(activeHighlightMark);
+      parent.normalize();
+    }
+    activeHighlightMark = null;
+  }
+
+  // 面板定位：優先顯示在選取文字上方，空間不夠時改顯示下方；
+  // 水平方向超出可視範圍就整體往內推，確保完整可見（觸控/滑鼠/大電視都適用）。
+  function positionFloatingElement(el, anchorRect, paneRect, gap = 10) {
+    el.style.visibility = "hidden";
+    el.style.left = "0px";
+    el.style.top = "0px";
+    const elWidth = el.offsetWidth;
+    const elHeight = el.offsetHeight;
+
+    const spaceAbove = anchorRect.top - paneRect.top;
+    const spaceBelow = paneRect.bottom - anchorRect.bottom;
+    const placeBelow = spaceAbove < (elHeight + gap) && spaceBelow >= (elHeight + gap);
+
+    let top = placeBelow ? anchorRect.bottom + gap : anchorRect.top - elHeight - gap;
+    top = Math.max(paneRect.top + 4, Math.min(top, paneRect.bottom - elHeight - 4));
+
+    let left = anchorRect.left + anchorRect.width / 2 - elWidth / 2;
+    left = Math.max(paneRect.left + 8, Math.min(left, paneRect.left + paneRect.width - elWidth - 8));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.visibility = "visible";
+  }
+
+  function getReadingPaneRect() {
+    const pane = document.getElementById("textPaneBody");
+    return pane ? pane.getBoundingClientRect() : document.body.getBoundingClientRect();
+  }
+
+  function speakQueryText(text) {
+    speechSynthesis.cancel(); // 永遠只播放最新查詢的文字，先停掉前一個還在播放的發音
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    speechSynthesis.speak(u);
+  }
+
+  // 字典：劍橋字典沒有可內嵌使用的免費 API，開新分頁是唯一例外
+  function openCambridgeDictionary(text) {
+    const url = `https://dictionary.cambridge.org/search/english/direct/?q=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  // 翻譯：主要用 Google 翻譯公開端點（免金鑰），失敗時退回 MyMemory 備援
+  async function translateWithGoogle(text, targetLang = "zh-TW") {
+    const params = new URLSearchParams({ client: "gtx", sl: "en", tl: targetLang, dt: "t", q: text });
+    const response = await fetch(`https://translate.googleapis.com/translate_a/single?${params}`);
+    if (!response.ok) throw new Error("Google 翻譯暫時無法使用");
+    const data = await response.json();
+    const translated = data[0].map(segment => segment[0]).join("");
+    if (!translated) throw new Error("Google 翻譯回應格式異常");
+    return translated;
+  }
+
+  async function translateWithMyMemory(text, targetLang = "zh-TW") {
+    const params = new URLSearchParams({ q: text, langpair: `en|${targetLang}` });
+    const response = await fetch(`https://api.mymemory.translated.net/get?${params}`);
+    if (!response.ok) throw new Error("翻譯服務暫時無法使用");
+    const data = await response.json();
+    if (data.responseStatus !== 200) throw new Error(data.responseDetails || "翻譯失敗");
+    return data.responseData.translatedText;
+  }
+
+  async function translateQueryText(text) {
+    try {
+      return await translateWithGoogle(text);
+    } catch (err) {
+      console.warn("Google 翻譯失敗，改用備援服務：", err.message);
+      return await translateWithMyMemory(text);
+    }
+  }
+
+  // ---- 拖曳選取整句/片語：選字查閱面板（發音／翻譯／字典／AI 解釋）----
+  function showSelectionPanel(rect, selectedText, range) {
+    closeQueryPanels();
+    closeSmartLookupCard();
+    if (range) applyQueryHighlight(range.cloneRange());
+
+    const paneRect = getReadingPaneRect();
+    const panel = document.createElement("div");
+    panel.className = "selection-panel";
+    const tools = [
+      { icon: "🔊", label: "發音", action: () => speakQueryText(selectedText) },
+      { icon: "🌐", label: "翻譯", action: () => handleTranslateClick(panel, selectedText, rect, paneRect) },
+      { icon: "📖", label: "字典", action: () => openCambridgeDictionary(selectedText) },
+      { icon: "🤖", label: "AI 解釋", action: () => showResultBox(panel, "AI 解釋", `關於「${escapeHtml(selectedText)}」的解釋（未來功能）`, rect, paneRect) },
+    ];
+    tools.forEach(t => {
+      const btn = document.createElement("button");
+      btn.innerHTML = `${t.icon} ${t.label}`;
+      btn.addEventListener("click", (e) => { e.stopPropagation(); t.action(); });
+      panel.appendChild(btn);
+    });
+    document.body.appendChild(panel);
+    positionFloatingElement(panel, rect, paneRect);
+    activeSelectionPanel = panel;
+  }
+
+  function showResultBox(panel, label, html, anchorRect, paneRect) {
+    if (activeResultBox) activeResultBox.remove();
+    const box = document.createElement("div");
+    box.className = "result-box";
+    box.innerHTML = `<div class="rb-label">${escapeHtml(label)}</div>${html}`;
+    document.body.appendChild(box);
+    positionFloatingElement(box, anchorRect, paneRect);
+    activeResultBox = box;
+  }
+
+  async function handleTranslateClick(panel, selectedText, anchorRect, paneRect) {
+    showResultBox(panel, "翻譯", "翻譯中...", anchorRect, paneRect);
+    try {
+      const translated = await translateQueryText(selectedText);
+      showResultBox(panel, "翻譯", escapeHtml(translated), anchorRect, paneRect);
+    } catch (err) {
+      showResultBox(panel, "翻譯", `（翻譯失敗：${escapeHtml(err.message)}）`, anchorRect, paneRect);
+    }
+  }
+
+  // ---- 點一個單字：Smart Lookup Card（自動發音＋自動翻譯）----
+  // 全程只存在「一張」卡片，切換到不同單字時更新同一個節點內容，不會新增第二張。
+  function ensureSmartLookupCard() {
+    if (!smartLookupCardEl) {
+      smartLookupCardEl = document.createElement("div");
+      smartLookupCardEl.className = "smart-lookup-card";
+      document.body.appendChild(smartLookupCardEl);
+    }
+    return smartLookupCardEl;
+  }
+
+  function closeSmartLookupCard() {
+    if (smartLookupCardEl) {
+      smartLookupCardEl.remove();
+      smartLookupCardEl = null;
+    }
+    smartLookupRequestToken++;
+    clearQueryHighlight();
+  }
+
+  function renderSmartLookupCardSkeleton(card, word) {
+    const escapedWord = escapeHtml(word);
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button class="slc-speak-btn" id="slcSpeakBtn" title="重新播放發音">🔊</button>
+        <span class="slc-word">${escapedWord}</span>
+      </div>
+      <div class="slc-cn" id="slcTranslation"></div>
+      <button class="slc-more-btn" id="slcMoreBtn">更多 ▾</button>
+      <div class="slc-more-row" id="slcMoreRow">
+        <button id="slcDictBtn">📚 劍橋字典</button>
+        <button id="slcAiBtn">🤖 AI 解釋</button>
+      </div>
+    `;
+    card.querySelector("#slcSpeakBtn").addEventListener("click", () => speakQueryText(word));
+    card.querySelector("#slcMoreBtn").addEventListener("click", () => {
+      card.querySelector("#slcMoreRow").classList.toggle("show");
+    });
+    card.querySelector("#slcDictBtn").addEventListener("click", () => openCambridgeDictionary(word));
+    card.querySelector("#slcAiBtn").addEventListener("click", () => {
+      card.querySelector("#slcTranslation").textContent = `關於「${word}」的解釋（未來功能）`;
+    });
+  }
+
+  function setSmartLookupCardTranslation(text) {
+    const el = smartLookupCardEl && smartLookupCardEl.querySelector("#slcTranslation");
+    if (el) el.textContent = text;
+  }
+
+  async function showSmartLookupCard(rect, word, range) {
+    closeQueryPanels();
+    if (range) applyQueryHighlight(range.cloneRange());
+
+    const card = ensureSmartLookupCard();
+    smartLookupRequestToken++;
+    const requestToken = smartLookupRequestToken;
+
+    renderSmartLookupCardSkeleton(card, word);
+    setSmartLookupCardTranslation("翻譯中...");
+
+    const paneRect = getReadingPaneRect();
+    positionFloatingElement(card, rect, paneRect);
+
+    speakQueryText(word);
+
+    try {
+      const translated = await translateQueryText(word);
+      if (requestToken !== smartLookupRequestToken) return; // 已經點了別的單字，這次結果過期
+      setSmartLookupCardTranslation(translated);
+      positionFloatingElement(card, rect, paneRect);
+    } catch (err) {
+      if (requestToken !== smartLookupRequestToken) return;
+      setSmartLookupCardTranslation("無法取得中文");
+      positionFloatingElement(card, rect, paneRect);
+    }
+  }
+
+  // 找出點擊座標所在的單字範圍與文字內容，支援「直接點一個字」查閱
+  function getWordAtPoint(x, y) {
+    let range;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (!pos) return null;
+      range = document.createRange();
+      range.setStart(pos.offsetNode, pos.offset);
+      range.collapse(true);
+    }
+    if (!range) return null;
+
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) return null;
+
+    const text = node.textContent;
+    let start = range.startOffset;
+    let end = range.startOffset;
+    const isWordChar = (ch) => ch && /[A-Za-z0-9'-]/.test(ch);
+    while (start > 0 && isWordChar(text[start - 1])) start--;
+    while (end < text.length && isWordChar(text[end])) end++;
+    if (start === end) return null;
+
+    const wordRange = document.createRange();
+    wordRange.setStart(node, start);
+    wordRange.setEnd(node, end);
+
+    return {
+      text: text.slice(start, end),
+      rect: wordRange.getBoundingClientRect(),
+      range: wordRange,
+    };
+  }
+
+  // 把查閱互動掛到 Reading Mode 渲染出來的 .reading-view 容器上。
+  // 每次進入閱讀模式重新渲染時呼叫一次；元素是全新建立的 innerHTML 節點，
+  // 不會有重複綁定監聽器的問題。
+  function wireReadingLookupInteractions(readingViewEl) {
+    if (!readingViewEl) return;
+
+    readingViewEl.addEventListener("mouseup", () => {
+      const sel = window.getSelection();
+      const text = sel.toString().trim();
+      if (text.length > 0) {
+        closeSmartLookupCard(); // 避免拖曳選句時，畫面上同時出現 Smart Lookup Card
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        showSelectionPanel(rect, text, range);
+        sel.removeAllRanges(); // 改用自訂反白標記顯示，不需要保留瀏覽器原生選取狀態
+      }
+    });
+
+    readingViewEl.addEventListener("click", (e) => {
+      // 如果剛剛已經有拖曳選取（mouseup 已處理），不要再重複觸發
+      const sel = window.getSelection();
+      if (sel.toString().trim().length > 0) return;
+
+      const target = e.target.closest("p");
+      if (!target) return;
+
+      const word = getWordAtPoint(e.clientX, e.clientY);
+      if (word && word.text) {
+        showSmartLookupCard(word.rect, word.text, word.range);
+      }
+    });
+  }
+
+  // 點擊查閱面板／卡片以外的地方，關閉所有查閱面板／卡片並清除反白。
+  // Whiteboard 的 FAB／工具列／畫布本身排除在外——老師在白板上書寫
+  // 不應被視為「點擊背景」，Smart Lookup Card 應該維持開啟。
+  document.addEventListener("mousedown", (e) => {
+    if (activeSelectionPanel && !activeSelectionPanel.contains(e.target)) {
+      setTimeout(() => {
+        if (!window.getSelection().toString().trim()) closeQueryPanels();
+      }, 0);
+    }
+    const whiteboardFab = document.getElementById("whiteboardFab");
+    const whiteboardCanvasEl = document.getElementById("whiteboardCanvas");
+    const clickedWhiteboardUI =
+      (whiteboardFab && whiteboardFab.contains(e.target)) ||
+      e.target === whiteboardCanvasEl;
+    if (smartLookupCardEl && !smartLookupCardEl.contains(e.target) && !clickedWhiteboardUI) {
+      closeSmartLookupCard();
+    }
+  });
+
+  // ---------- Whiteboard（教學白板）—— Teaching Overlay ----------
+  // 蓋在 Page Editor（Image Area + Text Area）上方，跟編輯/閱讀模式、縮放、
+  // 翻頁、Smart Lookup 完全獨立：canvas 預設 pointer-events:none，只有
+  // 展開工具列（老師「拿起畫筆」）時才攔截點擊變成畫布。內容只存在當次
+  // Page 的畫布像素裡，不保存、不寫入 Supabase，離開這一頁或按「清除
+  // 全部」就會清空。DOM 只建立一次（lazy），跨頁重複使用同一個 canvas。
+  let whiteboardCtx = null;
+  let whiteboardIsDrawing = false;
+  let whiteboardLastPoint = null;
+  let whiteboardCurrentMode = "pen"; // "pen" | "eraser"
+  let whiteboardSelectedColor = "#2563eb";
+  let whiteboardSelectedSize = 3;
+  let whiteboardVisible = false;
+
+  function ensureWhiteboardDom() {
+    if (document.getElementById("whiteboardCanvas")) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.id = "whiteboardCanvas";
+    canvas.className = "whiteboard-canvas";
+    document.body.appendChild(canvas);
+
+    const fab = document.createElement("div");
+    fab.className = "whiteboard-fab";
+    fab.id = "whiteboardFab";
+    fab.innerHTML = `
+      <button id="toggleWhiteboardBtn" class="whiteboard-fab-btn" title="教學白板">✏️</button>
+      <div class="whiteboard-toolbar" id="whiteboardToolbar">
+        <div class="wb-row">
+          <button class="wb-color" data-color="#2563eb" title="藍色">🟦</button>
+          <button class="wb-color" data-color="#dc2626" title="紅色">🟥</button>
+          <button class="wb-color" data-color="#eab308" title="黃色">🟨</button>
+        </div>
+        <div class="wb-divider"></div>
+        <div class="wb-row">
+          <button class="wb-size" data-size="3" title="細">•</button>
+          <button class="wb-size" data-size="6" title="中">••</button>
+          <button class="wb-size" data-size="12" title="粗">•••</button>
+        </div>
+        <div class="wb-divider"></div>
+        <button class="wb-tool" id="wbEraserBtn" title="橡皮擦">🩹 橡皮擦</button>
+        <button class="wb-action" id="wbClearBtn" title="清除全部">🧽 清除全部</button>
+        <button class="wb-action" id="wbCollapseBtn" title="收合">❌ 收合</button>
+      </div>
+    `;
+    document.body.appendChild(fab);
+
+    whiteboardCtx = canvas.getContext("2d");
+
+    canvas.addEventListener("pointerdown", startWhiteboardStroke);
+    canvas.addEventListener("pointermove", drawWhiteboardStroke);
+    window.addEventListener("pointerup", endWhiteboardStroke);
+
+    document.getElementById("toggleWhiteboardBtn").addEventListener("click", () => {
+      const toolbar = document.getElementById("whiteboardToolbar");
+      const willShow = !toolbar.classList.contains("show");
+      toolbar.classList.toggle("show", willShow);
+      setWhiteboardCanvasActive(willShow);
+    });
+
+    fab.querySelectorAll(".wb-color").forEach(btn => {
+      btn.addEventListener("click", () => {
+        whiteboardSelectedColor = btn.dataset.color;
+        whiteboardCurrentMode = "pen";
+        updateWhiteboardToolUI();
+      });
+    });
+    fab.querySelectorAll(".wb-size").forEach(btn => {
+      btn.addEventListener("click", () => {
+        whiteboardSelectedSize = Number(btn.dataset.size);
+        updateWhiteboardToolUI();
+      });
+    });
+    document.getElementById("wbEraserBtn").addEventListener("click", () => {
+      whiteboardCurrentMode = "eraser";
+      updateWhiteboardToolUI();
+    });
+    document.getElementById("wbClearBtn").addEventListener("click", () => {
+      if (!whiteboardCtx) return;
+      whiteboardCtx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+    document.getElementById("wbCollapseBtn").addEventListener("click", () => {
+      document.getElementById("whiteboardToolbar").classList.remove("show");
+      setWhiteboardCanvasActive(false);
+    });
+
+    window.addEventListener("resize", () => {
+      if (whiteboardVisible) repositionWhiteboardCanvas();
+    });
+  }
+
+  function setWhiteboardCanvasActive(active) {
+    const canvas = document.getElementById("whiteboardCanvas");
+    if (canvas) canvas.classList.toggle("wb-active", active);
+  }
+
+  function updateWhiteboardToolUI() {
+    document.querySelectorAll(".wb-color").forEach(btn => {
+      btn.classList.toggle("active", whiteboardCurrentMode === "pen" && btn.dataset.color === whiteboardSelectedColor);
+    });
+    document.querySelectorAll(".wb-size").forEach(btn => {
+      btn.classList.toggle("active", Number(btn.dataset.size) === whiteboardSelectedSize);
+    });
+    const eraserBtn = document.getElementById("wbEraserBtn");
+    if (eraserBtn) eraserBtn.classList.toggle("active", whiteboardCurrentMode === "eraser");
+  }
+
+  // Whiteboard 覆蓋的目標範圍：Page Editor 的 Image Area + Text Area 整塊
+  // （.editor-layout），對應 MagicBook01 覆蓋整個 Reading Workspace 的做法。
+  function getWhiteboardTargetRect() {
+    const layout = document.querySelector(".editor-layout");
+    return layout ? layout.getBoundingClientRect() : document.body.getBoundingClientRect();
+  }
+
+  // 進入 Page Editor 時呼叫：對齊目前 Image/Text Area 的可視範圍，並清空
+  // 畫布內容（每次重新進入一頁，Whiteboard 一律是空白，不保存任何內容）。
+  // canvas.width／height（像素緩衝區）只在這裡設定；之後視窗大小變動只呼叫
+  // repositionWhiteboardCanvas() 調整 CSS 位置，不會重設像素緩衝區，避免
+  // 無故清掉老師正在畫的內容。
+  function initWhiteboard() {
+    ensureWhiteboardDom();
+    const canvas = document.getElementById("whiteboardCanvas");
+    const rect = getWhiteboardTargetRect();
+
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    canvas.style.left = `${rect.left}px`;
+    canvas.style.top = `${rect.top}px`;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+
+    whiteboardCtx = canvas.getContext("2d");
+    whiteboardCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+    whiteboardCurrentMode = "pen";
+    whiteboardSelectedColor = "#2563eb";
+    whiteboardSelectedSize = 3;
+    updateWhiteboardToolUI();
+    document.getElementById("whiteboardToolbar").classList.remove("show");
+    setWhiteboardCanvasActive(false);
+
+    canvas.style.display = "block";
+    document.getElementById("whiteboardFab").style.display = "block";
+    whiteboardVisible = true;
+  }
+
+  // 只調整 CSS 位置/尺寸，不動像素緩衝區本身，用於視窗尺寸變動時持續對齊，
+  // 不會清掉老師已經畫好的內容。
+  function repositionWhiteboardCanvas() {
+    const canvas = document.getElementById("whiteboardCanvas");
+    if (!canvas) return;
+    const rect = getWhiteboardTargetRect();
+    canvas.style.left = `${rect.left}px`;
+    canvas.style.top = `${rect.top}px`;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+  }
+
+  // 離開 Page Editor 時呼叫：隱藏白板與 FAB，不需要保留任何內容。
+  function hideWhiteboardUI() {
+    whiteboardVisible = false;
+    const canvas = document.getElementById("whiteboardCanvas");
+    const fab = document.getElementById("whiteboardFab");
+    if (canvas) canvas.style.display = "none";
+    if (fab) {
+      fab.style.display = "none";
+      const toolbar = document.getElementById("whiteboardToolbar");
+      if (toolbar) toolbar.classList.remove("show");
+    }
+  }
+
+  function getWhiteboardPoint(e) {
+    const canvas = document.getElementById("whiteboardCanvas");
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function startWhiteboardStroke(e) {
+    if (!whiteboardCtx) return;
+    whiteboardIsDrawing = true;
+    whiteboardLastPoint = getWhiteboardPoint(e);
+  }
+
+  function drawWhiteboardStroke(e) {
+    if (!whiteboardIsDrawing || !whiteboardCtx) return;
+    const point = getWhiteboardPoint(e);
+    whiteboardCtx.save();
+    if (whiteboardCurrentMode === "eraser") {
+      // 橡皮擦：destination-out 直接擦除筆畫經過的像素，粗細跟隨目前畫筆設定
+      whiteboardCtx.globalCompositeOperation = "destination-out";
+    } else {
+      whiteboardCtx.globalCompositeOperation = "source-over";
+      whiteboardCtx.strokeStyle = whiteboardSelectedColor;
+    }
+    whiteboardCtx.lineWidth = whiteboardSelectedSize;
+    whiteboardCtx.lineCap = "round";
+    whiteboardCtx.lineJoin = "round";
+    whiteboardCtx.beginPath();
+    whiteboardCtx.moveTo(whiteboardLastPoint.x, whiteboardLastPoint.y);
+    whiteboardCtx.lineTo(point.x, point.y);
+    whiteboardCtx.stroke();
+    whiteboardCtx.restore();
+    whiteboardLastPoint = point;
+  }
+
+  function endWhiteboardStroke() {
+    whiteboardIsDrawing = false;
+    whiteboardLastPoint = null;
+  }
+
+  // ---------- Image lightbox（🔍 放大檢視 / 雙擊：大電視全螢幕展示用）----------
+  function openImageLightbox(src, alt) {
+    const overlay = document.createElement("div");
+    overlay.className = "image-lightbox-overlay";
+    overlay.innerHTML = `
+      <button type="button" class="image-lightbox-close" aria-label="關閉">✕</button>
+      <img class="image-lightbox-img" src="${src}" alt="${escapeHtml(alt || "教材圖片")}">
+      <div class="image-lightbox-hint">點擊任意處關閉</div>
+    `;
+    document.body.appendChild(overlay);
+
+    function close() {
+      overlay.remove();
+      document.removeEventListener("keydown", onKeydown);
+    }
+    function onKeydown(e) {
+      if (e.key === "Escape") close();
+    }
+    overlay.addEventListener("click", close);
+    document.addEventListener("keydown", onKeydown);
+  }
+
+  // ---------- Page editor view (fixed two-column: Image left / Text right) ----------
+  let textAreaMode = "edit"; // "edit" | "read" — 每次進入 Page 都重設為 edit
+
+  async function renderPageEditor(bookId, lessonNumber, pageNumber) {
+    closeQueryPanels();
+    closeSmartLookupCard();
+
+    app.innerHTML = `<div class="empty-hint" style="padding:80px 0;">載入中...</div>`;
+
+    let book, lesson;
+    try {
+      [book, lesson] = await Promise.all([
+        bookRepository.getBookById(bookId),
+        ensureLessonWorkingCopyLoaded(bookId, lessonNumber),
+      ]);
+    } catch (err) {
+      console.error("載入 Page 失敗：", err);
+      app.innerHTML = `<div class="empty-hint" style="padding:80px 0;">載入失敗，請返回上一頁再試一次</div>`;
+      return;
+    }
+
+    const page = lesson.pages.find(p => p.number === pageNumber);
+    if (!page) {
+      navigate(`material/${encodeURIComponent(bookId)}/lesson/${encodeURIComponent(lessonNumber)}`);
+      return;
+    }
+
+    textAreaMode = "edit";
+    imageZoomLevel = 100;
+    textZoomLevel = 100;
+
+    app.innerHTML = `
+      <div class="editor-topbar">
+        <button class="back-btn" id="backBtn">← 返回 Lesson</button>
+        <div class="editor-topbar-meta">
+          <span class="topbar-strong">${escapeHtml(book.name)}</span>
+          <span class="topbar-sep">·</span>
+          <span>Lesson ${lesson.number}：${escapeHtml(lesson.title)}</span>
+          <span class="topbar-sep">·</span>
+          <span>Page ${page.number}</span>
+        </div>
+        <label class="sync-scroll-toggle">
+          <input type="checkbox" id="syncScrollToggle">
+          Sync Scroll
+        </label>
+        <button class="add-btn save-lesson-btn" id="saveLessonBtnTop">💾 儲存 Lesson</button>
+      </div>
+      <div class="editor-layout">
+        <div class="editor-pane">
+          <div class="editor-pane-label pane-label-row">
+            <span>🖼️ Image Area</span>
+            ${renderZoomControls("image", imageZoomLevel, "圖片")}
+          </div>
+          <div class="editor-pane-body" id="imagePaneBody">
+            <div class="block-list" id="imageBlockList"></div>
+            <button class="add-btn secondary" id="addImageBlockBtn">＋新增 Image Block</button>
+          </div>
+        </div>
+        <div class="editor-pane">
+          <div class="editor-pane-label pane-label-row">
+            <span>📝 Text Area</span>
+            <div class="mode-controls">
+              ${renderZoomControls("text", textZoomLevel, "文字")}
+              <span class="mode-status-badge" id="modeStatusBadge"></span>
+              <button class="mode-toggle-btn" id="modeToggleBtn"></button>
+            </div>
+          </div>
+          <div class="editor-pane-body" id="textPaneBody"></div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("backBtn").addEventListener("click", () => {
+      navigate(`material/${encodeURIComponent(bookId)}/lesson/${encodeURIComponent(lessonNumber)}`);
+    });
+
+    document.getElementById("saveLessonBtnTop").addEventListener("click", async () => {
+      await persistCurrentLesson();
+    });
+
+    document.getElementById("addImageBlockBtn").addEventListener("click", () => {
+      page.imageBlocks.push({ id: nextLocalId("block"), content: "點擊或拖曳圖片到這裡", imageSrc: null, fileName: null });
+      showToast("已新增 Image Block（記得按 💾 儲存 Lesson 才會存進雲端）");
+      renderImageBlocks(page);
+    });
+
+    document.getElementById("modeToggleBtn").addEventListener("click", () => {
+      toggleTextMode(page);
+    });
+
+    wireImageZoomButtons();
+    wireTextZoomButtons();
+    applyImageZoom();
+    applyTextZoom();
+
+    renderImageBlocks(page);
+    renderTextPane(page); // 初次進入：textAreaMode 已於上方重設為 "edit"，Button / Pane 由這裡統一產生
+    setupSyncScroll();
+    initWhiteboard(); // 每次進入 Page，Whiteboard 一律重設為空白並蓋上這一頁
+  }
+
+  // Sync Scroll（預設關閉）：勾選後，左右任一面板捲動時，依「捲動比例」同步另一側；
+  // 取消勾選則左右完全獨立，互不影響。監聽只掛一次（面板容器本身不會被重繪替換）。
+  function setupSyncScroll() {
+    const leftPane = document.getElementById("imagePaneBody");
+    const rightPane = document.getElementById("textPaneBody");
+    const syncToggle = document.getElementById("syncScrollToggle");
+    if (!leftPane || !rightPane || !syncToggle) return;
+
+    let isSyncing = false; // 避免兩側互相觸發造成無限迴圈
+
+    function scrollRatio(el) {
+      const max = el.scrollHeight - el.clientHeight;
+      return max <= 0 ? 0 : el.scrollTop / max;
+    }
+
+    function applyRatio(el, ratio) {
+      const max = el.scrollHeight - el.clientHeight;
+      el.scrollTop = max * ratio;
+    }
+
+    leftPane.addEventListener("scroll", () => {
+      if (!syncToggle.checked || isSyncing) return;
+      isSyncing = true;
+      applyRatio(rightPane, scrollRatio(leftPane));
+      isSyncing = false;
+    });
+
+    rightPane.addEventListener("scroll", () => {
+      if (!syncToggle.checked || isSyncing) return;
+      isSyncing = true;
+      applyRatio(leftPane, scrollRatio(rightPane));
+      isSyncing = false;
+    });
+  }
+
+  // 唯一允許切換 textAreaMode 的地方。切換後一定會呼叫 renderTextPane()，
+  // 不會只改文字或只改畫面——textAreaMode → renderTextPane() → Button + Pane 一次到位。
+  function toggleTextMode(page) {
+    closeQueryPanels();
+    closeSmartLookupCard();
+    textAreaMode = textAreaMode === "edit" ? "read" : "edit";
+    renderTextPane(page);
+  }
+
+  // 單一進入點：狀態徽章、Button 文字、Pane 內容都由這裡依 textAreaMode 決定。
+  //   狀態徽章＝第一順位資訊，直接講「現在是什麼模式」，不需要使用者推理。
+  //   Button＝第二順位資訊，只講「下一步可以做什麼」。
+  //   textAreaMode === "edit" → 徽章「🖊️ 編輯模式」→ Button「📖 閱讀模式」→ renderEditPane()
+  //   textAreaMode === "read" → 徽章「📖 閱讀模式」→ Button「✏️ 編輯模式」→ renderReadingPane()
+  function renderTextPane(page) {
+    const badgeEl = document.getElementById("modeStatusBadge");
+    const toggleBtn = document.getElementById("modeToggleBtn");
+    const bodyEl = document.getElementById("textPaneBody");
+
+    if (textAreaMode === "edit") {
+      badgeEl.textContent = "🖊️ 編輯模式";
+      badgeEl.className = "mode-status-badge is-edit";
+      toggleBtn.textContent = "📖 閱讀模式";
+      renderEditPane(page, bodyEl);
+    } else {
+      badgeEl.textContent = "📖 閱讀模式";
+      badgeEl.className = "mode-status-badge is-read";
+      toggleBtn.textContent = "✏️ 編輯模式";
+      renderReadingPane(page, bodyEl);
+    }
+    applyTextZoom();
+  }
+
+  // Reading Mode：rawText → rawTextToHtml() → block.html → innerHTML，流程不變。
+  function renderReadingPane(page, bodyEl) {
+    const htmlBlocks = page.textBlocks
+      .map(b => b.html)
+      .filter(html => html && html.trim().length > 0);
+
+    bodyEl.innerHTML = htmlBlocks.length === 0
+      ? `<div class="empty-hint">還沒有內容可以閱讀，切回編輯模式輸入文字吧！</div>`
+      : `<div class="reading-view">${htmlBlocks.map(html => `<div class="reading-block">${html}</div>`).join("")}</div>`;
+
+    wireReadingLookupInteractions(bodyEl.querySelector(".reading-view"));
+  }
+
+  // Edit Mode：textarea 清單 + 新增文字按鈕，行為與資料模型（rawText/html）完全不變。
+  function renderEditPane(page, bodyEl) {
+    bodyEl.innerHTML = `
+      <div class="block-list" id="textBlockList"></div>
+      <button class="add-btn secondary" id="addTextBlockBtn">＋新增文字</button>
+    `;
+
+    document.getElementById("addTextBlockBtn").addEventListener("click", () => {
+      page.textBlocks.push({ id: nextLocalId("block"), rawText: "", html: "" });
+      renderTextBlocks(page);
+      focusTextarea(page.textBlocks[page.textBlocks.length - 1].id);
+    });
+
+    renderTextBlocks(page);
+  }
+
+  function focusTextarea(blockId) {
+    const el = document.querySelector(`textarea[data-id="${blockId}"]`);
+    if (el) el.focus();
+  }
+
+  function circledNumber(n) {
+    const circled = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","⑬","⑭","⑮","⑯","⑰","⑱","⑲","⑳"];
+    return circled[n - 1] || `(${n})`;
+  }
+
+  // Renders one column's block list. `contentRenderer(block)` returns the
+  // inner HTML for that block's content area (image placeholder vs textarea).
+  // `attachExtra(listEl)` is an optional hook for wiring up extra behavior
+  // (e.g. textarea input listeners) after the HTML is inserted.
+  function renderBlockColumn(listEl, blocks, contentRenderer, emptyHint, onDelete, onReorder, attachExtra) {
+    if (blocks.length === 0) {
+      listEl.innerHTML = `<div class="empty-hint">${emptyHint}</div>`;
+      return;
+    }
+
+    listEl.innerHTML = blocks.map((block, idx) => `
+      <div class="block-card" draggable="true" data-id="${block.id}">
+        <div class="drag-handle" title="拖曳排序">⠿</div>
+        <div class="block-index">${circledNumber(idx + 1)}</div>
+        <div class="block-main">
+          ${contentRenderer(block)}
+        </div>
+        <div class="card-actions top-align">
+          <button class="icon-btn danger" data-action="delete" title="刪除">🗑</button>
+        </div>
+      </div>
+    `).join("");
+
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".block-card");
+        onDelete(card.dataset.id);
+      });
+    });
+
+    enableDragReorder(listEl, ".block-card", onReorder);
+
+    if (attachExtra) attachExtra(listEl);
+  }
+
+  const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+  // 選取圖片當下就立即上傳到 Supabase Storage，Working Copy 從頭到尾只
+  // 保存回傳的公開網址，不會把 base64 存進畫面狀態或資料庫。上傳期間
+  // 先把這個 Image Block 顯示成「上傳中...」，沿用原本空白 Placeholder
+  // 的呈現方式，不需要另外設計一種狀態。
+  async function handleImageFile(file, block, page) {
+    if (!file) return;
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      showToast("僅支援 jpg / png / webp 格式的圖片");
+      return;
+    }
+    block.imageSrc = null;
+    block.fileName = file.name;
+    block.content = "上傳中...";
+    renderImageBlocks(page);
+
+    try {
+      const url = await bookRepository.uploadImage(file);
+      block.imageSrc = url;
+      showToast("圖片已上傳（記得按 💾 儲存 Lesson 才會存進雲端）");
+    } catch (err) {
+      console.error("圖片上傳失敗：", err);
+      block.content = "點擊或拖曳圖片到這裡";
+      showToast("圖片上傳失敗，請檢查網路連線後再試一次");
+    }
+    renderImageBlocks(page);
+  }
+
+  function renderImageBlocks(page) {
+    const listEl = document.getElementById("imageBlockList");
+    renderBlockColumn(
+      listEl,
+      page.imageBlocks,
+      (block) => block.imageSrc
+        ? `
+          <div class="image-slot has-image" data-id="${block.id}">
+            <img class="image-slot-img" src="${block.imageSrc}" alt="${escapeHtml(block.fileName || "教材圖片")}">
+            <div class="image-slot-toolbar">
+              <button type="button" class="image-slot-btn" data-action="zoom-view">🔍 放大檢視</button>
+              <button type="button" class="image-slot-btn" data-action="replace">🔄 更換</button>
+              <button type="button" class="image-slot-btn" data-action="remove-image">✖ 移除圖片</button>
+            </div>
+            <input type="file" class="image-file-input" accept="image/jpeg,image/png,image/webp" hidden>
+          </div>
+        `
+        : `
+          <div class="image-slot is-empty" data-id="${block.id}">
+            <span class="image-slot-hint">${escapeHtml(block.content)}</span>
+            <input type="file" class="image-file-input" accept="image/jpeg,image/png,image/webp" hidden>
+          </div>
+        `,
+      "還沒有 Image Block，點擊下方按鈕新增吧！",
+      (id) => {
+        if (!confirm("確定要刪除這個 Image Block 嗎？")) return;
+        page.imageBlocks = page.imageBlocks.filter(b => b.id !== id);
+        showToast("已刪除 Image Block");
+        renderImageBlocks(page);
+      },
+      (fromId, toId) => {
+        reorderById(page.imageBlocks, fromId, toId);
+        renderImageBlocks(page);
+      },
+      (el) => {
+        el.querySelectorAll(".image-slot").forEach(slot => {
+          const block = page.imageBlocks.find(b => b.id === slot.dataset.id);
+          if (!block) return;
+          const fileInput = slot.querySelector(".image-file-input");
+
+          fileInput.addEventListener("click", (e) => e.stopPropagation());
+          fileInput.addEventListener("change", (e) => {
+            const file = e.target.files && e.target.files[0];
+            handleImageFile(file, block, page);
+            fileInput.value = "";
+          });
+
+          if (slot.classList.contains("is-empty")) {
+            // 點擊空白 Placeholder 開啟檔案選擇器
+            slot.addEventListener("click", () => fileInput.click());
+          } else {
+            const imgEl = slot.querySelector(".image-slot-img");
+            // 放大檢視：按鈕（觸控／滑鼠皆可）＋ 圖片本身單擊，統一開啟全螢幕 Lightbox
+            const openLightbox = () => openImageLightbox(block.imageSrc, block.fileName);
+            slot.querySelector('[data-action="zoom-view"]').addEventListener("click", (e) => {
+              e.stopPropagation();
+              openLightbox();
+            });
+            imgEl.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openLightbox();
+            });
+            slot.querySelector('[data-action="replace"]').addEventListener("click", (e) => {
+              e.stopPropagation();
+              fileInput.click();
+            });
+            slot.querySelector('[data-action="remove-image"]').addEventListener("click", (e) => {
+              e.stopPropagation();
+              block.imageSrc = null;
+              block.fileName = null;
+              showToast("已移除圖片");
+              renderImageBlocks(page);
+            });
+          }
+
+          // 支援把圖片檔案直接拖放到這個 Image Block 上
+          slot.addEventListener("dragover", (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.add("drag-over");
+          });
+          slot.addEventListener("dragleave", () => {
+            slot.classList.remove("drag-over");
+          });
+          slot.addEventListener("drop", (e) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.remove("drag-over");
+            const file = e.dataTransfer.files && e.dataTransfer.files[0];
+            handleImageFile(file, block, page);
+          });
+        });
+      }
+    );
+    applyImageZoom();
+  }
+
+  function autoResizeTextarea(el) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  function renderTextBlocks(page) {
+    const listEl = document.getElementById("textBlockList");
+    renderBlockColumn(
+      listEl,
+      page.textBlocks,
+      (block) => `<textarea class="block-textarea" data-id="${block.id}" draggable="false" rows="1" placeholder="請輸入或貼上文字">${escapeHtml(block.rawText)}</textarea>`,
+      "還沒有文字區，點擊下方按鈕新增吧！",
+      (id) => {
+        if (!confirm("確定要刪除這個文字區嗎？")) return;
+        page.textBlocks = page.textBlocks.filter(b => b.id !== id);
+        showToast("已刪除文字區");
+        renderTextBlocks(page);
+      },
+      (fromId, toId) => {
+        reorderById(page.textBlocks, fromId, toId);
+        renderTextBlocks(page);
+      },
+      (el) => {
+        el.querySelectorAll("textarea.block-textarea").forEach(ta => {
+          autoResizeTextarea(ta);
+          ta.addEventListener("input", () => {
+            const block = page.textBlocks.find(b => b.id === ta.dataset.id);
+            if (block) {
+              block.rawText = ta.value;
+              block.html = rawTextToHtml(block.rawText);
+            }
+            autoResizeTextarea(ta);
+          });
+        });
+      }
+    );
+  }
+
+  // ---------- Drag & drop reorder helper ----------
+  // Works for both Lesson cards and Page cards. Reorders the backing array
+  // in-memory by id, then triggers a re-render + renumber via the callback.
+  function reorderById(list, fromId, toId) {
+    if (fromId === toId) return;
+    const fromIdx = list.findIndex(item => item.id === fromId);
+    const toIdx = list.findIndex(item => item.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+  }
+
+  function enableDragReorder(listEl, cardSelector, onReorder) {
+    let draggedId = null;
+
+    listEl.querySelectorAll(cardSelector).forEach(card => {
+      card.addEventListener("dragstart", (e) => {
+        if (e.target.closest("textarea, input")) { e.preventDefault(); return; }
+        draggedId = card.dataset.id;
+        card.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", draggedId); } catch (err) {}
+      });
+
+      card.addEventListener("dragend", () => {
+        card.classList.remove("dragging");
+        listEl.querySelectorAll(cardSelector).forEach(c => {
+          c.classList.remove("drop-before", "drop-after");
+        });
+      });
+
+      card.addEventListener("dragover", (e) => {
+        if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) return;
+        e.preventDefault();
+        if (!draggedId || card.dataset.id === draggedId) return;
+        const rect = card.getBoundingClientRect();
+        const isAfter = (e.clientY - rect.top) > rect.height / 2;
+        listEl.querySelectorAll(cardSelector).forEach(c => {
+          c.classList.remove("drop-before", "drop-after");
+        });
+        card.classList.add(isAfter ? "drop-after" : "drop-before");
+      });
+
+      card.addEventListener("drop", (e) => {
+        if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) return;
+        e.preventDefault();
+        const targetId = card.dataset.id;
+        card.classList.remove("drop-before", "drop-after");
+        if (!draggedId || targetId === draggedId) return;
+        onReorder(draggedId, targetId);
+      });
+    });
+  }
+
+  window.addEventListener("hashchange", render);
+  render();
+</script>
+</body>
+</html>
