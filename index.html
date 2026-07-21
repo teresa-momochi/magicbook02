@@ -282,6 +282,40 @@
     flex-wrap: wrap;
   }
 
+  /* ---------- Breadcrumb（資料夾路徑）---------- */
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+
+  .breadcrumb-item {
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    border-radius: 6px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .breadcrumb-item:hover {
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+  }
+
+  .breadcrumb-current {
+    padding: 4px 6px;
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .breadcrumb-sep {
+    color: var(--border);
+  }
+
   /* ---------- Draggable list items (Lesson / Page) ---------- */
   .lesson-list, .page-list {
     display: flex;
@@ -1001,8 +1035,9 @@
     async listRootFolders() {
       const { data, error } = await supabaseClient
         .from("magicbook02_folders")
-        .select("id, name, parent_folder_id")
+        .select("id, name, parent_folder_id, sort_order")
         .is("parent_folder_id", null)
+        .order("sort_order", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
       return data || [];
@@ -1011,11 +1046,23 @@
     async listChildFolders(folderId) {
       const { data, error } = await supabaseClient
         .from("magicbook02_folders")
-        .select("id, name, parent_folder_id")
+        .select("id, name, parent_folder_id, sort_order")
         .eq("parent_folder_id", folderId)
+        .order("sort_order", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
       return data || [];
+    }
+
+    // 拖曳排序資料夾（根目錄或同一個父資料夾底下都適用，一次覆蓋整組 sort_order）
+    async reorderFolders(orderedFolderIds) {
+      for (let i = 0; i < orderedFolderIds.length; i++) {
+        const { error } = await supabaseClient
+          .from("magicbook02_folders")
+          .update({ sort_order: i })
+          .eq("id", orderedFolderIds[i]);
+        if (error) throw error;
+      }
     }
 
     async getFolderById(folderId) {
@@ -1026,6 +1073,21 @@
         .single();
       if (error) throw error;
       return data;
+    }
+
+    // 從根資料夾一路排到目前這個資料夾，Breadcrumb 用。
+    // guard 只是防呆（理論上不會有循環，因為刪除父資料夾會 cascade 刪掉子資料夾）。
+    async getFolderPath(folderId) {
+      const path = [];
+      let currentId = folderId;
+      let guard = 0;
+      while (currentId && guard < 20) {
+        const folder = await this.getFolderById(currentId);
+        path.unshift(folder);
+        currentId = folder.parent_folder_id;
+        guard++;
+      }
+      return path;
     }
 
     async createFolder(name, parentFolderId) {
@@ -1057,14 +1119,16 @@
       if (error) throw error;
     }
 
-    // 資料夾內容：屬於這個資料夾的書（含 Lesson/Page 數量）。
-    // 分兩步查詢（先拿 book_id 清單，再查 summary view），
+    // 資料夾內容：屬於這個資料夾的書（含 Lesson/Page 數量），依 sort_order 排序。
+    // 分兩步查詢（先拿排好序的 book_id 清單，再查 summary view，
+    // 最後用原本的順序重新組回去——因為 .in() 查詢不保證回傳順序），
     // 不依賴 PostgREST 對 view 的自動關聯推斷，較穩定。
     async listBooksInFolder(folderId) {
       const { data: links, error: linkError } = await supabaseClient
         .from("magicbook02_book_folders")
-        .select("book_id")
-        .eq("folder_id", folderId);
+        .select("book_id, sort_order")
+        .eq("folder_id", folderId)
+        .order("sort_order", { ascending: true });
       if (linkError) throw linkError;
 
       const bookIds = (links || []).map(l => l.book_id);
@@ -1075,24 +1139,59 @@
         .select("*")
         .in("id", bookIds);
       if (error) throw error;
-      return (data || []).map(b => ({ id: b.id, name: b.name, lessonCount: b.lesson_count || 0, pageCount: b.page_count || 0 }));
+
+      const byId = new Map((data || []).map(b => [b.id, b]));
+      return bookIds
+        .map(id => byId.get(id))
+        .filter(Boolean)
+        .map(b => ({ id: b.id, name: b.name, lessonCount: b.lesson_count || 0, pageCount: b.page_count || 0 }));
     }
 
-    // 完全沒有掛在任何資料夾下的書（根目錄顯示用）。
+    // 拖曳排序某個資料夾裡的書：排序值存在 book_folders 這張關聯表上，
+    // 因為同一本書在不同資料夾裡的順序可能不一樣（可以同時掛多個資料夾）。
+    async reorderBooksInFolder(folderId, orderedBookIds) {
+      for (let i = 0; i < orderedBookIds.length; i++) {
+        const { error } = await supabaseClient
+          .from("magicbook02_book_folders")
+          .update({ sort_order: i })
+          .eq("folder_id", folderId)
+          .eq("book_id", orderedBookIds[i]);
+        if (error) throw error;
+      }
+    }
+
+    // 完全沒有掛在任何資料夾下的書（根目錄顯示用），依 books.sort_order 排序。
     // 同樣分兩步：先拿「已經在某個資料夾」的 book_id 清單，
-    // 再從全部書裡面排除掉這些，剩下的就是未分類的書。
+    // 再從全部書裡面排除掉這些，剩下的就是未分類的書；排序值另外從
+    // magicbook02_books 撈（不依賴 summary view 是否有暴露 sort_order 欄位）。
     async listUnfiledBooks() {
-      const [{ data: links, error: linkError }, { data: allBooks, error: booksError }] = await Promise.all([
+      const [{ data: links, error: linkError }, { data: allBooks, error: booksError }, { data: bookRows, error: bookRowsError }] = await Promise.all([
         supabaseClient.from("magicbook02_book_folders").select("book_id"),
-        supabaseClient.from("magicbook02_book_summary").select("*").order("updated_at", { ascending: false }),
+        supabaseClient.from("magicbook02_book_summary").select("*"),
+        supabaseClient.from("magicbook02_books").select("id, sort_order"),
       ]);
       if (linkError) throw linkError;
       if (booksError) throw booksError;
+      if (bookRowsError) throw bookRowsError;
 
       const filedIds = new Set((links || []).map(l => l.book_id));
+      const sortOrderById = new Map((bookRows || []).map(r => [r.id, r.sort_order || 0]));
+
       return (allBooks || [])
         .filter(b => !filedIds.has(b.id))
+        .sort((a, b) => (sortOrderById.get(a.id) || 0) - (sortOrderById.get(b.id) || 0))
         .map(b => ({ id: b.id, name: b.name, lessonCount: b.lesson_count || 0, pageCount: b.page_count || 0 }));
+    }
+
+    // 拖曳排序根目錄裡「未歸類的書」：排序值存在 books.sort_order 上。
+    async reorderUnfiledBooks(orderedBookIds) {
+      for (let i = 0; i < orderedBookIds.length; i++) {
+        const { error } = await supabaseClient
+          .from("magicbook02_books")
+          .update({ sort_order: i })
+          .eq("id", orderedBookIds[i]);
+        if (error) throw error;
+      }
     }
 
     async listFoldersForBook(bookId) {
@@ -1161,6 +1260,20 @@
       const { error } = await supabaseClient
         .from("magicbook02_books")
         .update({ name, updated_at: new Date().toISOString() })
+        .eq("id", bookId);
+      if (error) throw error;
+    }
+
+    // 永久刪除教材。假設 magicbook02_lessons.book_id 跟
+    // magicbook02_book_folders.book_id 都設定了 ON DELETE CASCADE
+    // （跟現有 schema 的其他刪除路徑一致的假設）——刪掉這一筆之後，
+    // 底下的 Lesson／Page／Image Block／Text Block／資料夾關聯都會
+    // 一併被刪除。如果實際跑起來發現刪除教材後 Lesson 沒有跟著消失，
+    // 代表 book_id 那個外鍵當初沒有設 cascade，需要另外補上。
+    async deleteBook(bookId) {
+      const { error } = await supabaseClient
+        .from("magicbook02_books")
+        .delete()
         .eq("id", bookId);
       if (error) throw error;
     }
@@ -1486,14 +1599,40 @@
   }
 
   // ---------- 共用：Home／Folder 都要顯示「資料夾卡片 + 書卡片」清單 ----------
+  // Breadcrumb：pathFolders 是從根資料夾到目前資料夾的完整陣列（getFolderPath 的結果）。
+  // 除了最後一段（目前所在資料夾）以外，其他每一段都可以點擊直接跳過去。
+  function renderBreadcrumb(pathFolders) {
+    const parts = [`<button class="breadcrumb-item" data-nav-home="1">首頁</button>`];
+    pathFolders.forEach((folder, idx) => {
+      parts.push(`<span class="breadcrumb-sep">›</span>`);
+      if (idx === pathFolders.length - 1) {
+        parts.push(`<span class="breadcrumb-current">${escapeHtml(folder.name)}</span>`);
+      } else {
+        parts.push(`<button class="breadcrumb-item" data-nav-folder-id="${folder.id}">${escapeHtml(folder.name)}</button>`);
+      }
+    });
+    return `<div class="breadcrumb">${parts.join("")}</div>`;
+  }
+
+  function wireBreadcrumb(container) {
+    const homeBtn = container.querySelector('[data-nav-home]');
+    if (homeBtn) homeBtn.addEventListener("click", () => navigate("home"));
+    container.querySelectorAll('[data-nav-folder-id]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        navigate(`folder/${encodeURIComponent(btn.dataset.navFolderId)}`);
+      });
+    });
+  }
+
   function folderCardHtml(folder) {
     return `
-      <div class="book-card folder-card" data-folder-id="${folder.id}">
+      <div class="book-card folder-card" draggable="true" data-folder-id="${folder.id}">
+        <div class="drag-handle" title="拖曳排序">⠿</div>
         <div class="book-icon">📁</div>
         <div class="book-info">
           <p class="book-name">${escapeHtml(folder.name)}</p>
         </div>
-        <button class="icon-btn" data-action="edit-folder" title="重新命名資料夾">✎</button>
+        <button class="icon-btn" data-action="edit-folder" title="重新命名資料夾">✏️</button>
         <button class="icon-btn danger" data-action="delete-folder" title="刪除資料夾">🗑</button>
         <div class="chevron">›</div>
       </div>
@@ -1503,7 +1642,8 @@
   function bookCardHtml(book, opts) {
     opts = opts || {};
     return `
-      <div class="book-card" data-id="${book.id}">
+      <div class="book-card" draggable="true" data-id="${book.id}">
+        <div class="drag-handle" title="拖曳排序">⠿</div>
         <div class="book-icon">📖</div>
         <div class="book-info">
           <p class="book-name">${escapeHtml(book.name)}</p>
@@ -1512,16 +1652,18 @@
             <span class="stat">Pages：<span class="stat-value">${book.pageCount}</span></span>
           </div>
         </div>
-        <button class="icon-btn" data-action="edit-book" title="編輯 Book Name">✎</button>
+        <button class="icon-btn" data-action="edit-book" title="編輯 Book Name">✏️</button>
+        <button class="icon-btn danger" data-action="delete-book" title="刪除教材（無法復原）">🗑</button>
         ${opts.removableFromFolder ? `<button class="icon-btn danger" data-action="remove-from-folder" title="從此資料夾移除（不會刪除教材）">📁✖</button>` : ""}
         <div class="chevron">›</div>
       </div>
     `;
   }
 
-  // 綁定資料夾卡片／書卡片共用的點擊行為（進入、改名、刪除）。
+  // 綁定資料夾卡片／書卡片共用的點擊行為（進入、改名、刪除、拖曳排序）。
   // `removeFromFolderHandler` 是可選的，只有 Folder 頁面會傳進來。
-  function wireFolderAndBookCards(listEl, { books, folders, onFolderRenamed, onFolderDeleted, onBookRenamed, removeFromFolderHandler }) {
+  // `onReorderFolders` / `onReorderBooks` 也是可選的，沒傳就不啟用拖曳排序。
+  function wireFolderAndBookCards(listEl, { books, folders, onFolderRenamed, onFolderDeleted, onBookRenamed, onBookDeleted, removeFromFolderHandler, onReorderFolders, onReorderBooks }) {
     listEl.querySelectorAll(".folder-card").forEach(card => {
       card.addEventListener("click", () => {
         navigate(`folder/${encodeURIComponent(card.dataset.folderId)}`);
@@ -1588,6 +1730,24 @@
       });
     });
 
+    listEl.querySelectorAll('[data-action="delete-book"]').forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".book-card");
+        const book = books.find(b => b.id === card.dataset.id);
+        if (!book) return;
+        if (!confirm(`確定要永久刪除「${book.name}」嗎？\n裡面所有 Lesson、Page、圖片、文字都會一起被刪除，無法復原。`)) return;
+        try {
+          await bookRepository.deleteBook(book.id);
+          showToast("已刪除教材");
+          await onBookDeleted();
+        } catch (err) {
+          console.error("刪除教材失敗：", err);
+          showToast("刪除失敗，請檢查網路連線後再試一次");
+        }
+      });
+    });
+
     if (removeFromFolderHandler) {
       listEl.querySelectorAll('[data-action="remove-from-folder"]').forEach(btn => {
         btn.addEventListener("click", async (e) => {
@@ -1606,6 +1766,20 @@
         navigate(`material/${encodeURIComponent(card.dataset.id)}`);
       });
     });
+
+    // 資料夾跟書分開排序（各自的拖曳把手只認同類型的卡片，兩組互不干擾）
+    if (onReorderFolders) {
+      enableDragReorder(listEl, ".folder-card", (fromId, toId) => {
+        reorderById(folders, fromId, toId);
+        onReorderFolders(folders.map(f => f.id));
+      });
+    }
+    if (onReorderBooks) {
+      enableDragReorder(listEl, ".book-card:not(.folder-card)", (fromId, toId) => {
+        reorderById(books, fromId, toId);
+        onReorderBooks(books.map(b => b.id));
+      });
+    }
   }
 
   // ---------- Home view（根目錄：頂層資料夾 ＋ 沒有歸類的書）----------
@@ -1663,33 +1837,52 @@
       return;
     }
 
-    if (folders.length === 0 && books.length === 0) {
-      listEl.innerHTML = `<div class="empty-hint">還沒有教材，點擊「＋新增教材」或「＋新增資料夾」開始建立吧！</div>`;
-    } else {
-      let html = "";
-      if (folders.length > 0) {
-        html += folders.map(folderCardHtml).join("");
+    // 用目前記憶體裡的 folders／books 重繪清單（不重新打 API），
+    // 拖曳排序後要能立即看到新順序，才呼叫這個函式，網路同步是背景進行的。
+    function renderList() {
+      if (folders.length === 0 && books.length === 0) {
+        listEl.innerHTML = `<div class="empty-hint">還沒有教材，點擊「＋新增教材」或「＋新增資料夾」開始建立吧！</div>`;
+      } else {
+        let html = "";
+        if (folders.length > 0) html += folders.map(folderCardHtml).join("");
+        if (books.length > 0) html += books.map(b => bookCardHtml(b)).join("");
+        listEl.innerHTML = html;
       }
-      if (books.length > 0) {
-        html += books.map(b => bookCardHtml(b)).join("");
-      }
-      listEl.innerHTML = html;
+
+      wireFolderAndBookCards(listEl, {
+        books, folders,
+        onFolderRenamed: renderHome,
+        onFolderDeleted: renderHome,
+        onBookRenamed: renderHome,
+        onBookDeleted: renderHome,
+        onReorderFolders: async (orderedIds) => {
+          renderList();
+          try {
+            await bookRepository.reorderFolders(orderedIds);
+          } catch (err) {
+            console.error("同步資料夾順序失敗：", err);
+            showToast("排序未能同步到雲端，請重新整理頁面後再試一次");
+          }
+        },
+        onReorderBooks: async (orderedIds) => {
+          renderList();
+          try {
+            await bookRepository.reorderUnfiledBooks(orderedIds);
+          } catch (err) {
+            console.error("同步教材順序失敗：", err);
+            showToast("排序未能同步到雲端，請重新整理頁面後再試一次");
+          }
+        },
+      });
     }
 
-    wireFolderAndBookCards(listEl, {
-      books, folders,
-      onFolderRenamed: renderHome,
-      onFolderDeleted: renderHome,
-      onBookRenamed: renderHome,
-    });
+    renderList();
   }
 
   // ---------- Folder view（子資料夾 ＋ 屬於這個資料夾的書 ＋ 加入既有教材）----------
   async function renderFolderPage(folderId) {
     app.innerHTML = `
-      <div class="book-page-top">
-        <button class="back-btn" id="backBtn">← 返回上一層</button>
-      </div>
+      <div id="breadcrumbContainer"><div class="breadcrumb"><span class="breadcrumb-current">載入中...</span></div></div>
       <div class="book-page-actions">
         <h2 class="material-title" id="folderTitle">載入中...</h2>
         <div class="home-header-actions">
@@ -1705,10 +1898,11 @@
       </div>
     `;
 
-    let folder, childFolders, booksHere, allBooks;
+    let folder, folderPath, childFolders, booksHere, allBooks;
     try {
-      [folder, childFolders, booksHere, allBooks] = await Promise.all([
+      [folder, folderPath, childFolders, booksHere, allBooks] = await Promise.all([
         bookRepository.getFolderById(folderId),
+        bookRepository.getFolderPath(folderId),
         bookRepository.listChildFolders(folderId),
         bookRepository.listBooksInFolder(folderId),
         bookRepository.listBooksSummary(),
@@ -1720,9 +1914,9 @@
     }
 
     document.getElementById("folderTitle").textContent = `📁 ${folder.name}`;
-    document.getElementById("backBtn").addEventListener("click", () => {
-      navigate(folder.parent_folder_id ? `folder/${encodeURIComponent(folder.parent_folder_id)}` : "home");
-    });
+    const breadcrumbContainer = document.getElementById("breadcrumbContainer");
+    breadcrumbContainer.innerHTML = renderBreadcrumb(folderPath);
+    wireBreadcrumb(breadcrumbContainer);
 
     document.getElementById("addSubfolderBtn").addEventListener("click", async () => {
       const name = (prompt("請輸入子資料夾名稱：", "") || "").trim();
@@ -1751,32 +1945,56 @@
     });
 
     const listEl = document.getElementById("bookList");
-    if (childFolders.length === 0 && booksHere.length === 0) {
-      listEl.innerHTML = `<div class="empty-hint">這個資料夾還是空的，點上面的按鈕新增子資料夾或教材，或用下面的清單加入既有教材吧！</div>`;
-    } else {
-      let html = "";
-      if (childFolders.length > 0) html += childFolders.map(folderCardHtml).join("");
-      if (booksHere.length > 0) html += booksHere.map(b => bookCardHtml(b, { removableFromFolder: true })).join("");
-      listEl.innerHTML = html;
+
+    function renderList() {
+      if (childFolders.length === 0 && booksHere.length === 0) {
+        listEl.innerHTML = `<div class="empty-hint">這個資料夾還是空的，點上面的按鈕新增子資料夾或教材，或用下面的清單加入既有教材吧！</div>`;
+      } else {
+        let html = "";
+        if (childFolders.length > 0) html += childFolders.map(folderCardHtml).join("");
+        if (booksHere.length > 0) html += booksHere.map(b => bookCardHtml(b, { removableFromFolder: true })).join("");
+        listEl.innerHTML = html;
+      }
+
+      wireFolderAndBookCards(listEl, {
+        books: booksHere,
+        folders: childFolders,
+        onFolderRenamed: () => renderFolderPage(folderId),
+        onFolderDeleted: () => renderFolderPage(folderId),
+        onBookRenamed: () => renderFolderPage(folderId),
+        onBookDeleted: () => renderFolderPage(folderId),
+        removeFromFolderHandler: async (book) => {
+          try {
+            await bookRepository.removeBookFromFolder(book.id, folderId);
+            showToast("已從這個資料夾移除");
+            await renderFolderPage(folderId);
+          } catch (err) {
+            console.error("移除失敗：", err);
+            showToast("移除失敗，請檢查網路連線後再試一次");
+          }
+        },
+        onReorderFolders: async (orderedIds) => {
+          renderList();
+          try {
+            await bookRepository.reorderFolders(orderedIds);
+          } catch (err) {
+            console.error("同步資料夾順序失敗：", err);
+            showToast("排序未能同步到雲端，請重新整理頁面後再試一次");
+          }
+        },
+        onReorderBooks: async (orderedIds) => {
+          renderList();
+          try {
+            await bookRepository.reorderBooksInFolder(folderId, orderedIds);
+          } catch (err) {
+            console.error("同步教材順序失敗：", err);
+            showToast("排序未能同步到雲端，請重新整理頁面後再試一次");
+          }
+        },
+      });
     }
 
-    wireFolderAndBookCards(listEl, {
-      books: booksHere,
-      folders: childFolders,
-      onFolderRenamed: () => renderFolderPage(folderId),
-      onFolderDeleted: () => renderFolderPage(folderId),
-      onBookRenamed: () => renderFolderPage(folderId),
-      removeFromFolderHandler: async (book) => {
-        try {
-          await bookRepository.removeBookFromFolder(book.id, folderId);
-          showToast("已從這個資料夾移除");
-          await renderFolderPage(folderId);
-        } catch (err) {
-          console.error("移除失敗：", err);
-          showToast("移除失敗，請檢查網路連線後再試一次");
-        }
-      },
-    });
+    renderList();
 
     // 加入既有教材：下拉選單排除已經在這個資料夾裡的書
     const selectEl = document.getElementById("existingBookSelect");
